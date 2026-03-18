@@ -1,0 +1,32 @@
+name: paint
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  # PyTorch with CUDA 12
+  - pytorch>=2.1.0
+  - torchvision
+  - pytorch-cuda=12.1
+  # Core ML
+  - numpy
+  - pillow
+  - pip:
+    # Diffusion
+    - diffusers>=0.25.0
+    - transformers>=4.36.0
+    - accelerate>=0.25.0
+    - safetensors
+    # Backend
+    - flask>=3.0.0
+    - flask-socketio>=5.3.0
+    - flask-cors>=4.0.0
+    - python-socketio>=5.10.0
+    - eventlet
+    # Utilities
+    - python-dotenv>=1.0.0
+    - pyyaml
+    - tqdm

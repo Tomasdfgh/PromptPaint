@@ -1,0 +1,22 @@
+services:
+  backend:
+    volumes:
+      - ./src/backend:/app/src/backend
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=True
+
+  frontend:
+    build:
+      context: .
+      dockerfile: src/frontend/Dockerfile.dev
+    ports:
+      - "${FRONTEND_PORT:-3001}:3000"
+    volumes:
+      - ./src/frontend/src:/app/src
+      - ./src/frontend/public:/app/public
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+      - HOST=0.0.0.0
+      - DANGEROUSLY_DISABLE_HOST_CHECK=true
+      - REACT_APP_API_URL=http://localhost:5000
