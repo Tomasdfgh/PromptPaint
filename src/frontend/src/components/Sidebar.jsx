@@ -1,4 +1,3 @@
-import { useState } from 'react';
 
 const MODES = [
   { id: 'standard',     label: 'Standard'     },
@@ -66,8 +65,10 @@ export default function Sidebar({
             totalSteps={totalSteps}
           />
         )}
+      </div>
 
-        {/* Shared generation params */}
+      {/* Bottom: generation settings + progress + actions */}
+      <div className="sidebar-bottom">
         <SharedParams params={params} set={set} />
 
         {/* Progress bar */}
@@ -116,56 +117,68 @@ function StandardPanel({ params, set }) {
         value={params.prompt || ''}
         onChange={e => set('prompt', e.target.value)}
       />
-      <label className="field-label" style={{ marginTop: 10 }}>Negative prompt</label>
-      <textarea
-        className="prompt-input"
-        rows={2}
-        placeholder="What to avoid..."
-        value={params.negative_prompt || ''}
-        onChange={e => set('negative_prompt', e.target.value)}
-      />
     </section>
   );
 }
 
+const DEFAULT_PROMPTS = [
+  { text: '', weight: 1 },
+  { text: '', weight: 1 },
+];
+
 function MixingPanel({ params, set }) {
+  const prompts = params.prompts || DEFAULT_PROMPTS;
+
+  const updatePrompt = (i, field, value) => {
+    const updated = prompts.map((p, idx) =>
+      idx === i ? { ...p, [field]: value } : p
+    );
+    set('prompts', updated);
+  };
+
+  const addPrompt = () => set('prompts', [...prompts, { text: '', weight: 1 }]);
+
+  const removePrompt = (i) => {
+    if (prompts.length <= 2) return;
+    set('prompts', prompts.filter((_, idx) => idx !== i));
+  };
+
+  const totalWeight = prompts.reduce((s, p) => s + (p.weight || 0), 0);
+
   return (
     <section className="panel">
-      <label className="field-label">Prompt A</label>
-      <textarea
-        className="prompt-input"
-        rows={3}
-        placeholder="First concept..."
-        value={params.prompt_a || ''}
-        onChange={e => set('prompt_a', e.target.value)}
-      />
-
-      <label className="field-label" style={{ marginTop: 10 }}>Prompt B</label>
-      <textarea
-        className="prompt-input"
-        rows={3}
-        placeholder="Second concept..."
-        value={params.prompt_b || ''}
-        onChange={e => set('prompt_b', e.target.value)}
-      />
-
-      <div className="slider-row" style={{ marginTop: 14 }}>
-        <label className="field-label">
-          Mix — <span className="slider-value">
-            {Math.round((params.alpha || 0.5) * 100)}% B
-          </span>
-        </label>
-        <input
-          type="range" min={0} max={1} step={0.01}
-          value={params.alpha || 0.5}
-          onChange={e => set('alpha', parseFloat(e.target.value))}
-          className="slider"
-        />
-        <div className="slider-ends">
-          <span>{params.prompt_a ? params.prompt_a.split(' ')[0] : 'A'}</span>
-          <span>{params.prompt_b ? params.prompt_b.split(' ')[0] : 'B'}</span>
+      {prompts.map((p, i) => (
+        <div key={i} style={{ marginBottom: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+            <label className="field-label" style={{ margin: 0 }}>Prompt {i + 1}</label>
+            {prompts.length > 2 && (
+              <button className="btn-small" onClick={() => removePrompt(i)}>✕</button>
+            )}
+          </div>
+          <textarea
+            className="prompt-input"
+            rows={2}
+            placeholder={`Concept ${i + 1}...`}
+            value={p.text}
+            onChange={e => updatePrompt(i, 'text', e.target.value)}
+          />
+          <div className="slider-row" style={{ marginTop: 6 }}>
+            <label className="field-label">
+              Weight — <span className="slider-value">
+                {totalWeight > 0 ? Math.round((p.weight / totalWeight) * 100) : 0}%
+              </span>
+            </label>
+            <input
+              type="range" min={0} max={10} step={0.1}
+              value={p.weight}
+              onChange={e => updatePrompt(i, 'weight', parseFloat(e.target.value))}
+              className="slider"
+            />
+          </div>
         </div>
-      </div>
+      ))}
+
+      <button className="btn-add-prompt" onClick={addPrompt}>+ Add prompt</button>
     </section>
   );
 }
@@ -279,7 +292,7 @@ function InterventionPanel({ params, set, generating, onIntervene, step, totalSt
           Auto-switch at step — <span className="slider-value">{params.intervention_step || 15}</span>
         </label>
         <input
-          type="range" min={1} max={params.steps || 30} step={1}
+          type="range" min={1} max={params.steps || 20} step={1}
           value={params.intervention_step || 15}
           onChange={e => set('intervention_step', parseInt(e.target.value))}
           className="slider"
@@ -300,49 +313,53 @@ function InterventionPanel({ params, set, generating, onIntervene, step, totalSt
 }
 
 function SharedParams({ params, set }) {
-  const [open, setOpen] = useState(false);
   return (
-    <section className="panel">
-      <button className="collapsible" onClick={() => setOpen(o => !o)}>
-        Generation settings {open ? '▲' : '▼'}
-      </button>
-      {open && (
-        <div className="collapsible-body">
-          <div className="slider-row">
-            <label className="field-label">
-              Steps — <span className="slider-value">{params.steps || 30}</span>
-            </label>
-            <input
-              type="range" min={10} max={50} step={1}
-              value={params.steps || 30}
-              onChange={e => set('steps', parseInt(e.target.value))}
-              className="slider"
-            />
-          </div>
-          <div className="slider-row" style={{ marginTop: 10 }}>
-            <label className="field-label">
-              CFG scale — <span className="slider-value">{(params.cfg_scale || 7.5).toFixed(1)}</span>
-            </label>
-            <input
-              type="range" min={1} max={15} step={0.5}
-              value={params.cfg_scale || 7.5}
-              onChange={e => set('cfg_scale', parseFloat(e.target.value))}
-              className="slider"
-            />
-          </div>
-          <div className="slider-row" style={{ marginTop: 10 }}>
-            <label className="field-label">
-              Preview every — <span className="slider-value">{params.preview_every || 5} steps</span>
-            </label>
-            <input
-              type="range" min={1} max={10} step={1}
-              value={params.preview_every || 5}
-              onChange={e => set('preview_every', parseInt(e.target.value))}
-              className="slider"
-            />
-          </div>
-        </div>
-      )}
+    <section className="panel panel-settings">
+      <label className="field-label">Generation settings</label>
+      <div className="slider-row">
+        <label className="field-label">
+          Steps — <span className="slider-value">{params.steps || 20}</span>
+        </label>
+        <input
+          type="range" min={10} max={50} step={1}
+          value={params.steps || 20}
+          onChange={e => set('steps', parseInt(e.target.value))}
+          className="slider"
+        />
+      </div>
+      <div className="slider-row">
+        <label className="field-label">
+          Guide scale — <span className="slider-value">{params.guide_scale ?? 7}</span>
+        </label>
+        <input
+          type="range" min={1} max={15} step={0.5}
+          value={params.guide_scale ?? 7}
+          onChange={e => set('guide_scale', parseFloat(e.target.value))}
+          className="slider"
+        />
+      </div>
+      <div className="slider-row">
+        <label className="field-label">
+          Single stroke — <span className="slider-value">{params.single_stroke ?? 100}%</span>
+        </label>
+        <input
+          type="range" min={10} max={100} step={10}
+          value={params.single_stroke ?? 100}
+          onChange={e => set('single_stroke', parseInt(e.target.value))}
+          className="slider"
+        />
+      </div>
+      <div className="slider-row">
+        <label className="field-label">
+          Overcoat — <span className="slider-value">{params.overcoat ?? 70}%</span>
+        </label>
+        <input
+          type="range" min={0} max={100} step={5}
+          value={params.overcoat ?? 70}
+          onChange={e => set('overcoat', parseInt(e.target.value))}
+          className="slider"
+        />
+      </div>
     </section>
   );
 }

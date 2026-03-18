@@ -48,48 +48,46 @@ def encode_prompt(prompt: str, pipeline) -> torch.Tensor:
     return prompt_embeds, pooled_prompt_embeds
 
 
-def _slerp(a: torch.Tensor, b: torch.Tensor, alpha: float) -> torch.Tensor:
+def _nlerp(tensors: list[torch.Tensor], weights: list[float]) -> torch.Tensor:
     """
-    Spherical linear interpolation — interpolates along the surface of a
-    hypersphere, preserving embedding magnitude unlike lerp.
-    Falls back to lerp when vectors are nearly parallel.
+    Normalized lerp for N vectors — weighted sum projected back onto the
+    hypersphere. Order-independent and generalizes to any number of inputs.
+
+    For seq embeddings [1, 77, 2048]: normalizes each token vector independently.
+    For pooled embeddings [1, 1280]: normalizes the single vector.
+    Preserves the average per-position magnitude of the inputs.
     """
-    a_f = a.float()
-    b_f = b.float()
+    total = sum(weights)
+    weights = [w / total for w in weights]
 
-    a_norm = torch.nn.functional.normalize(a_f, dim=-1)
-    b_norm = torch.nn.functional.normalize(b_f, dim=-1)
+    # Weighted sum
+    mixed = sum(w * t.float() for w, t in zip(weights, tensors))
 
-    dot       = (a_norm * b_norm).sum(dim=-1, keepdim=True).clamp(-1, 1)
-    theta     = torch.acos(dot.abs())
-    sin_theta = torch.sin(theta)
+    # Average per-position norm across input tensors (keepdim for broadcasting)
+    # dim=-1 means per-token for seq, per-vector for pooled
+    avg_norm = torch.stack([t.float().norm(dim=-1, keepdim=True) for t in tensors]).mean(0)
 
-    parallel = sin_theta < 1e-6
-    slerp_out = (
-        torch.sin((1.0 - alpha) * theta) / sin_theta * a_f +
-        torch.sin(alpha * theta)          / sin_theta * b_f
-    )
-    lerp_out = (1.0 - alpha) * a_f + alpha * b_f
+    # Normalize each position to unit length, then scale by average input norm
+    mixed = torch.nn.functional.normalize(mixed, dim=-1) * avg_norm
 
-    return torch.where(parallel, lerp_out, slerp_out).to(a.dtype)
+    return mixed.to(tensors[0].dtype)
 
 
 def mix_embeddings(
-    emb_a: tuple[torch.Tensor, torch.Tensor],
-    emb_b: tuple[torch.Tensor, torch.Tensor],
-    alpha: float,
+    embeddings: list[tuple[torch.Tensor, torch.Tensor]],
+    weights: list[float],
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """
-    Spherically interpolate between two encoded prompts.
-    alpha=0.0 → fully emb_a, alpha=1.0 → fully emb_b.
+    Mix N encoded prompts using normalized lerp (nlerp).
+    Works for 2 or more prompts. Weights are automatically normalized to sum to 1.
 
-    Uses slerp instead of lerp to preserve embedding magnitude,
-    producing genuine blends rather than snapping to one prompt.
+    Args:
+        embeddings: list of (seq_emb, pooled_emb) tuples from encode_prompt
+        weights:    per-prompt weights (any positive values, will be normalized)
     """
-    seq_a, pooled_a = emb_a
-    seq_b, pooled_b = emb_b
-
-    return _slerp(seq_a, seq_b, alpha), _slerp(pooled_a, pooled_b, alpha)
+    seqs    = [e[0] for e in embeddings]
+    pooleds = [e[1] for e in embeddings]
+    return _nlerp(seqs, weights), _nlerp(pooleds, weights)
 
 
 def directional_embedding(

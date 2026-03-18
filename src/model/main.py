@@ -41,7 +41,7 @@ app = FastAPI(lifespan=lifespan)
 
 
 # ---------------------------------------------------------------------------
-# Shared generation state (one generation at a time)
+# Per-session generation state — one GenerationState per connected client
 # ---------------------------------------------------------------------------
 
 class GenerationState:
@@ -52,18 +52,11 @@ class GenerationState:
         self._embedding   = None   # (seq, pooled) — swappable mid-loop
         self.current_step = 0
 
-    def reset(self):
-        with self._lock:
-            self.running      = False
-            self.cancel_flag  = False
-            self._embedding   = None
-            self.current_step = 0
-
     def start(self, embedding):
         with self._lock:
-            self.running     = True
-            self.cancel_flag = False
-            self._embedding  = embedding
+            self.running      = True
+            self.cancel_flag  = False
+            self._embedding   = embedding
             self.current_step = 0
 
     def set_embedding(self, emb):
@@ -83,7 +76,24 @@ class GenerationState:
             return self.cancel_flag
 
 
-state = GenerationState()
+# Dict keyed by session_id (Socket.IO sid passed from the Flask backend)
+sessions: dict[str, GenerationState] = {}
+sessions_lock = threading.Lock()
+
+
+def _get_session(session_id: str) -> GenerationState | None:
+    with sessions_lock:
+        return sessions.get(session_id)
+
+def _create_session(session_id: str) -> GenerationState:
+    state = GenerationState()
+    with sessions_lock:
+        sessions[session_id] = state
+    return state
+
+def _delete_session(session_id: str):
+    with sessions_lock:
+        sessions.pop(session_id, None)
 
 
 # ---------------------------------------------------------------------------
@@ -91,6 +101,7 @@ state = GenerationState()
 # ---------------------------------------------------------------------------
 
 class GenerateRequest(BaseModel):
+    session_id:          str   = "default"
     mode:                str   = "standard"
     prompt:              str   = ""
     negative_prompt:     str   = ""
@@ -101,16 +112,22 @@ class GenerateRequest(BaseModel):
     intervention_prompt: str   = ""
     alpha:               float = 0.5
     scale:               float = 1.0
-    steps:               int   = 30
-    cfg_scale:           float = 7.5
-    preview_every:       int   = 5
+    steps:               int   = 20
+    guide_scale:         float = 7.0
+    single_stroke:       int   = 100
+    overcoat:            int   = 70
     width:               int   = 1024
     height:              int   = 1024
     intervention_step:   int   = 15
     strokes:             list  = []
+    prompts:             list  = []
 
 class InterveneRequest(BaseModel):
-    prompt: str
+    session_id: str = "default"
+    prompt:     str = ""
+
+class CancelRequest(BaseModel):
+    session_id: str = "default"
 
 class EncodeRequest(BaseModel):
     prompt: str
@@ -144,8 +161,9 @@ def _event(data: dict) -> str:
 # ---------------------------------------------------------------------------
 
 def _generation_loop(req: GenerateRequest, queue: asyncio.Queue, loop: asyncio.AbstractEventLoop):
-    pipe = get_pipeline()
-    mode = req.mode
+    pipe     = get_pipeline()
+    mode     = req.mode
+    state    = _get_session(req.session_id)
 
     try:
         # Encode negative prompt
@@ -156,9 +174,15 @@ def _generation_loop(req: GenerateRequest, queue: asyncio.Queue, loop: asyncio.A
             pos_emb, pos_pooled = encode_prompt(req.prompt, pipe)
 
         elif mode == "mixing":
-            emb_a = encode_prompt(req.prompt_a, pipe)
-            emb_b = encode_prompt(req.prompt_b, pipe)
-            pos_emb, pos_pooled = mix_embeddings(emb_a, emb_b, req.alpha)
+            # prompts: [{text, weight}, ...] — supports 2 or more
+            prompt_list = req.prompts if req.prompts else [
+                {"text": req.prompt_a, "weight": 1 - req.alpha},
+                {"text": req.prompt_b, "weight": req.alpha},
+            ]
+            print(f"[mixing] {len(prompt_list)} prompts: {[(p['text'][:30], p['weight']) for p in prompt_list]}")
+            embeddings = [encode_prompt(p["text"], pipe) for p in prompt_list]
+            weights    = [float(p["weight"]) for p in prompt_list]
+            pos_emb, pos_pooled = mix_embeddings(embeddings, weights)
 
         elif mode == "directional":
             base    = encode_prompt(req.prompt,       pipe)
@@ -240,11 +264,12 @@ def _generation_loop(req: GenerateRequest, queue: asyncio.Queue, loop: asyncio.A
                 ).sample
 
             noise_uncond, noise_cond = noise_pred.chunk(2)
-            noise_pred = noise_uncond + req.cfg_scale * (noise_cond - noise_uncond)
+            noise_pred = noise_uncond + req.guide_scale * (noise_cond - noise_uncond)
             latents = pipe.scheduler.step(noise_pred, t, latents).prev_sample
 
-            # Always emit step count; only decode preview every N steps
-            is_preview_step = (i + 1) % req.preview_every == 0 or i == req.steps - 1
+            # Emit preview every single_stroke% of steps (100% = only at the end)
+            preview_every = max(1, round(req.steps * req.single_stroke / 100))
+            is_preview_step = (i + 1) % preview_every == 0 or i == req.steps - 1
             event_data = {"type": "progress", "step": i + 1, "total": req.steps}
             if is_preview_step:
                 event_data["preview"] = _latents_to_b64(latents, pipe)
@@ -265,11 +290,7 @@ def _generation_loop(req: GenerateRequest, queue: asyncio.Queue, loop: asyncio.A
     finally:
         if mode == "stencil":
             remove_stencil(pipe.unet)
-        state.reset()
-        # Explicitly free GPU tensors before releasing the cache
-        for var in ['latents', 'noise_pred', 'latents_in', 'emb_in', 'pooled_in']:
-            if var in locals():
-                del locals()[var]
+        _delete_session(req.session_id)
         import gc; gc.collect()
         torch.cuda.empty_cache()
         asyncio.run_coroutine_threadsafe(queue.put(None), loop)  # sentinel
@@ -287,8 +308,11 @@ def health():
 
 @app.post("/generate")
 async def generate(req: GenerateRequest):
-    if state.running:
-        return {"error": "Generation already in progress"}
+    existing = _get_session(req.session_id)
+    if existing and existing.running:
+        return {"error": "Generation already in progress for this session"}
+
+    state = _create_session(req.session_id)
 
     loop  = asyncio.get_event_loop()
     queue = asyncio.Queue()
@@ -319,8 +343,9 @@ async def generate(req: GenerateRequest):
 
 @app.post("/intervene")
 def intervene(req: InterveneRequest):
-    if not state.running:
-        return {"error": "No generation in progress"}
+    state = _get_session(req.session_id)
+    if not state or not state.running:
+        return {"error": "No generation in progress for this session"}
     pipe = get_pipeline()
     emb  = encode_prompt(req.prompt, pipe)
     state.set_embedding(emb)
@@ -328,8 +353,10 @@ def intervene(req: InterveneRequest):
 
 
 @app.post("/cancel")
-def cancel():
-    state.request_cancel()
+def cancel(req: CancelRequest):
+    state = _get_session(req.session_id)
+    if state:
+        state.request_cancel()
     return {"status": "ok"}
 
 

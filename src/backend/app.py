@@ -45,7 +45,7 @@ def health():
 
 @socketio.on('connect')
 def on_connect():
-    emit('status', {'message': 'connected'})
+    pass
 
 
 @socketio.on('generate')
@@ -59,6 +59,7 @@ def on_generate(data):
     """
     from flask import request as flask_request
     sid = flask_request.sid
+    data['session_id'] = sid
 
     def stream_generation(sid, data):
         try:
@@ -74,7 +75,7 @@ def on_generate(data):
                     event = json.loads(line)
                     etype = event.pop('type', 'progress')
                     socketio.emit(etype, event, to=sid)
-                    socketio.sleep(0)  # yield greenlet so each event is sent immediately
+                    socketio.sleep(0)
         except Exception as e:
             socketio.emit('error', {'message': str(e)}, to=sid)
 
@@ -84,7 +85,9 @@ def on_generate(data):
 @socketio.on('intervene')
 def on_intervene(data):
     """Hot-swap prompt mid-generation."""
+    from flask import request as flask_request
     try:
+        data['session_id'] = flask_request.sid
         r = requests.post(f'{MODEL_URL}/intervene', json=data, timeout=5)
         emit('status', r.json())
     except Exception as e:
@@ -93,8 +96,9 @@ def on_intervene(data):
 
 @socketio.on('cancel')
 def on_cancel():
+    from flask import request as flask_request
     try:
-        requests.post(f'{MODEL_URL}/cancel', timeout=3)
+        requests.post(f'{MODEL_URL}/cancel', json={'session_id': flask_request.sid}, timeout=3)
         emit('status', {'message': 'Cancellation requested'})
     except Exception as e:
         emit('error', {'message': str(e)})
