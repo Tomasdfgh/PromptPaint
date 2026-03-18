@@ -11,7 +11,7 @@ export default function Sidebar({
   mode, onModeChange,
   params, onParamsChange,
   onGenerate, onIntervene, onCancel,
-  generating, step, totalSteps,
+  generating, queuePos, step, totalSteps,
   brushRadius, onBrushRadiusChange,
 }) {
   const set = (key, val) => onParamsChange({ ...params, [key]: val });
@@ -71,16 +71,27 @@ export default function Sidebar({
       <div className="sidebar-bottom">
         <SharedParams params={params} set={set} />
 
-        {/* Progress bar */}
+        {/* Progress / queue status */}
         {generating && (
           <div className="progress-section">
-            <div className="progress-bar-track">
-              <div
-                className="progress-bar-fill"
-                style={{ width: totalSteps > 0 ? `${(step / totalSteps) * 100}%` : '0%' }}
-              />
-            </div>
-            <span className="progress-label">{step} / {totalSteps} steps</span>
+            {queuePos ? (
+              <>
+                <div className="progress-bar-track">
+                  <div className="progress-bar-fill progress-bar-pulse" style={{ width: '100%' }} />
+                </div>
+                <span className="progress-label">Queued — position {queuePos}</span>
+              </>
+            ) : (
+              <>
+                <div className="progress-bar-track">
+                  <div
+                    className="progress-bar-fill"
+                    style={{ width: totalSteps > 0 ? `${(step / totalSteps) * 100}%` : '0%' }}
+                  />
+                </div>
+                <span className="progress-label">{step} / {totalSteps} steps</span>
+              </>
+            )}
           </div>
         )}
 
@@ -91,7 +102,7 @@ export default function Sidebar({
             onClick={onGenerate}
             disabled={generating}
           >
-            {generating ? 'Generating…' : 'Generate'}
+            {queuePos ? `Queued (${queuePos})` : generating ? 'Generating…' : 'Generate'}
           </button>
           {generating && (
             <button className="btn-cancel" onClick={onCancel}>Cancel</button>

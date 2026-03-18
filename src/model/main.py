@@ -13,6 +13,7 @@ import asyncio
 import base64
 import io
 import json
+import queue as stdlib_queue
 import threading
 from contextlib import asynccontextmanager
 
@@ -35,9 +36,37 @@ from features.stencil import apply_stencil, remove_stencil, mask_from_brush_stro
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     load_pipeline()
+    worker = threading.Thread(target=_gpu_worker, daemon=True)
+    worker.start()
     yield
+    _gpu_queue.put(None)  # shutdown sentinel
 
 app = FastAPI(lifespan=lifespan)
+
+# ---------------------------------------------------------------------------
+# GPU job queue — single worker serialises all generation onto one GPU
+# ---------------------------------------------------------------------------
+
+_gpu_queue: stdlib_queue.Queue = stdlib_queue.Queue()
+_worker_busy = False  # approximate — used only for queue-position estimates
+
+def _gpu_worker():
+    global _worker_busy
+    while True:
+        job = _gpu_queue.get()
+        if job is None:
+            break
+        req, event_queue, loop = job
+        _worker_busy = True
+        try:
+            asyncio.run_coroutine_threadsafe(
+                event_queue.put(_event({"type": "started"})), loop
+            )
+            _generation_loop(req, event_queue, loop)
+        except Exception as e:
+            print(f"[worker] unhandled exception for session {req.session_id}: {e}")
+        finally:
+            _worker_busy = False
 
 
 # ---------------------------------------------------------------------------
@@ -282,10 +311,10 @@ def _generation_loop(req: GenerateRequest, queue: asyncio.Queue, loop: asyncio.A
         )
 
     except Exception as e:
+        print(f"[generation_loop] error: {e}")
         asyncio.run_coroutine_threadsafe(
             queue.put(_event({"type": "error", "message": str(e)})), loop
         )
-        raise
 
     finally:
         if mode == "stencil":
@@ -312,21 +341,21 @@ async def generate(req: GenerateRequest):
     if existing and existing.running:
         return {"error": "Generation already in progress for this session"}
 
-    state = _create_session(req.session_id)
+    _create_session(req.session_id)
 
-    loop  = asyncio.get_event_loop()
-    queue = asyncio.Queue()
+    loop        = asyncio.get_running_loop()
+    event_queue = asyncio.Queue()
 
-    thread = threading.Thread(
-        target=_generation_loop,
-        args=(req, queue, loop),
-        daemon=True,
-    )
-    thread.start()
+    # Approximate queue position: jobs ahead + 1 if worker is currently busy
+    position = _gpu_queue.qsize() + (1 if _worker_busy else 0)
+    if position > 0:
+        await event_queue.put(_event({"type": "queued", "position": position + 1}))
+
+    _gpu_queue.put((req, event_queue, loop))
 
     async def stream():
         while True:
-            item = await queue.get()
+            item = await event_queue.get()
             if item is None:
                 break
             yield item

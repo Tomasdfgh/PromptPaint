@@ -135,12 +135,22 @@ export default function Canvas({ imageB64, stencilMode, brushRadius, onStrokesCh
     onStrokesChange([]);
   }, [onStrokesChange]);
 
+  const outerRef = useRef(null);
+
+  // Attach wheel listener as non-passive so preventDefault() works
+  useEffect(() => {
+    const el = outerRef.current;
+    if (!el) return;
+    el.addEventListener('wheel', handleWheel, { passive: false });
+    return () => el.removeEventListener('wheel', handleWheel);
+  }, [handleWheel]);
+
   const transform = `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`;
 
   return (
     <div
+      ref={outerRef}
       className="canvas-outer"
-      onWheel={handleWheel}
       onMouseDown={handlePanStart}
       onMouseMove={handlePanMove}
       onMouseUp={handlePanEnd}

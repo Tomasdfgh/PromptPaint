@@ -37,6 +37,7 @@ export default function App() {
   const [brushRadius, setBrushRadius] = useState(20);
   const [statusMsg,   setStatusMsg]   = useState('');
   const [menuOpen,    setMenuOpen]    = useState(false);
+  const [queuePos,    setQueuePos]    = useState(null);
   const [showAbout,   setShowAbout]   = useState(false);
   const [showContact, setShowContact] = useState(false);
   const menuRef = useRef(null);
@@ -56,6 +57,14 @@ export default function App() {
   // ---------------------------------------------------------------------------
   useEffect(() => {
 
+    socket.on('queued', (data) => {
+      setQueuePos(data.position);
+    });
+
+    socket.on('started', () => {
+      setQueuePos(null);
+    });
+
     socket.on('progress', (data) => {
       setStep(data.step);
       setTotalSteps(data.total);
@@ -65,19 +74,20 @@ export default function App() {
     socket.on('result', (data) => {
       setImageB64(data.image);
       setGenerating(false);
+      setQueuePos(null);
       setStep(0);
-      setStatusMsg('Done');
     });
 
     socket.on('cancelled', () => {
       setGenerating(false);
+      setQueuePos(null);
       setStep(0);
-      setStatusMsg('Cancelled');
     });
 
     socket.on('error', (data) => {
       setGenerating(false);
-      setStatusMsg(`Error: ${data.message}`);
+      setQueuePos(null);
+      console.error('Generation error:', data?.message ?? data);
     });
 
     socket.on('status', (data) => {
@@ -85,6 +95,8 @@ export default function App() {
     });
 
     return () => {
+      socket.off('queued');
+      socket.off('started');
       socket.off('connect');
       socket.off('disconnect');
       socket.off('progress');
@@ -164,6 +176,7 @@ export default function App() {
           onIntervene={handleIntervene}
           onCancel={handleCancel}
           generating={generating}
+          queuePos={queuePos}
           step={step}               totalSteps={totalSteps}
           brushRadius={brushRadius} onBrushRadiusChange={setBrushRadius}
         />
