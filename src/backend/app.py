@@ -57,8 +57,8 @@ def on_generate(data):
     Uses socketio.start_background_task (eventlet-safe) instead of
     raw threading.Thread.
     """
-    from flask_socketio import rooms
-    sid = rooms()[0]  # current socket session id
+    from flask import request as flask_request
+    sid = flask_request.sid
 
     def stream_generation(sid, data):
         try:
@@ -74,6 +74,7 @@ def on_generate(data):
                     event = json.loads(line)
                     etype = event.pop('type', 'progress')
                     socketio.emit(etype, event, to=sid)
+                    socketio.sleep(0)  # yield greenlet so each event is sent immediately
         except Exception as e:
             socketio.emit('error', {'message': str(e)}, to=sid)
 

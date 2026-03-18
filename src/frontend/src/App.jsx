@@ -18,7 +18,7 @@ const DEFAULT_PARAMS = {
   scale: 1.0,
   steps: 30,
   cfg_scale: 7.5,
-  preview_every: 5,
+  preview_every: 3,
   intervention_step: 15,
 };
 
@@ -34,7 +34,6 @@ export default function App() {
   const [brushRadius, setBrushRadius] = useState(20);
   const [statusMsg,   setStatusMsg]   = useState('');
 
-  const overlayRef = useRef(null); // for clearing stencil strokes
 
   // ---------------------------------------------------------------------------
   // Socket event listeners
@@ -97,6 +96,7 @@ export default function App() {
     setGenerating(true);
     setStep(0);
     setTotalSteps(params.steps || 30);
+    setImageB64(null);
     setStatusMsg('Starting…');
     socket.emit('generate', payload);
   }, [generating, mode, params, strokes]);
@@ -131,7 +131,10 @@ export default function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <span className="logo">PromptPaint</span>
+        <div className="header-title">
+          <h1 className="logo">PromptPaint</h1>
+          <p className="logo-subtitle">Generate art like you are painting</p>
+        </div>
         <div className="header-right">
           {statusMsg && <span className="status-msg">{statusMsg}</span>}
           <span

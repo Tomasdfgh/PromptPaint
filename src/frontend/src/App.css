@@ -39,18 +39,32 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 20px;
-  height: 48px;
+  padding: 0.75rem 2rem;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 
+.header-title {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
 .logo {
-  font-size: 16px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  line-height: 1.5;
   color: var(--accent);
+  margin: 0;
+}
+
+.logo-subtitle {
+  font-size: 0.95rem;
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.2;
 }
 
 .header-right {

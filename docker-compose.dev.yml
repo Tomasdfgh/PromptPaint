@@ -11,6 +11,7 @@ services:
       - model-cache:/model-cache
     environment:
       - HF_HOME=/model-cache
+      - HF_TOKEN=${HF_TOKEN:-}
     deploy:
       resources:
         reservations:
@@ -27,7 +28,7 @@ services:
     ports:
       - "${BACKEND_PORT:-5000}:5000"
     volumes:
-      - ./src/backend:/app
+      - ./src/backend:/app/src/backend
     environment:
       - FLASK_ENV=development
       - FLASK_DEBUG=True

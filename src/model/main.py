@@ -122,11 +122,13 @@ class EncodeRequest(BaseModel):
 
 def _latents_to_b64(latents: torch.Tensor, pipe) -> str:
     with torch.no_grad():
+        # SDXL VAE produces NaN in float16 — upcast to float32 for decode
         image = pipe.vae.decode(
-            latents / pipe.vae.config.scaling_factor,
+            latents.to(torch.float32) / pipe.vae.config.scaling_factor,
             return_dict=False,
         )[0]
     image = (image / 2 + 0.5).clamp(0, 1)
+    image = torch.nan_to_num(image, nan=0.0)  # safety net
     image = image.squeeze(0).permute(1, 2, 0).float().cpu().numpy()
     image = (image * 255).round().astype(np.uint8)
     buf = io.BytesIO()
@@ -196,8 +198,14 @@ def _generation_loop(req: GenerateRequest, queue: asyncio.Queue, loop: asyncio.A
             dtype=torch.float16, device=pipe.device,
         )
 
+        # Emit initial noise so the canvas clears immediately
         asyncio.run_coroutine_threadsafe(
-            queue.put(_event({"type": "progress", "step": 0, "total": req.steps})), loop
+            queue.put(_event({
+                "type":    "progress",
+                "step":    0,
+                "total":   req.steps,
+                "preview": _latents_to_b64(latents, pipe),
+            })), loop
         )
 
         for i, t in enumerate(timesteps):
@@ -235,17 +243,12 @@ def _generation_loop(req: GenerateRequest, queue: asyncio.Queue, loop: asyncio.A
             noise_pred = noise_uncond + req.cfg_scale * (noise_cond - noise_uncond)
             latents = pipe.scheduler.step(noise_pred, t, latents).prev_sample
 
-            # Emit progress + preview
-            if (i + 1) % req.preview_every == 0 or i == req.steps - 1:
-                preview = _latents_to_b64(latents, pipe)
-                asyncio.run_coroutine_threadsafe(
-                    queue.put(_event({
-                        "type":    "progress",
-                        "step":    i + 1,
-                        "total":   req.steps,
-                        "preview": preview,
-                    })), loop
-                )
+            # Always emit step count; only decode preview every N steps
+            is_preview_step = (i + 1) % req.preview_every == 0 or i == req.steps - 1
+            event_data = {"type": "progress", "step": i + 1, "total": req.steps}
+            if is_preview_step:
+                event_data["preview"] = _latents_to_b64(latents, pipe)
+            asyncio.run_coroutine_threadsafe(queue.put(_event(event_data)), loop)
 
         # Final image
         final = _latents_to_b64(latents, pipe)
@@ -263,6 +266,12 @@ def _generation_loop(req: GenerateRequest, queue: asyncio.Queue, loop: asyncio.A
         if mode == "stencil":
             remove_stencil(pipe.unet)
         state.reset()
+        # Explicitly free GPU tensors before releasing the cache
+        for var in ['latents', 'noise_pred', 'latents_in', 'emb_in', 'pooled_in']:
+            if var in locals():
+                del locals()[var]
+        import gc; gc.collect()
+        torch.cuda.empty_cache()
         asyncio.run_coroutine_threadsafe(queue.put(None), loop)  # sentinel
 
 
@@ -298,7 +307,14 @@ async def generate(req: GenerateRequest):
                 break
             yield item
 
-    return StreamingResponse(stream(), media_type="application/x-ndjson")
+    return StreamingResponse(
+        stream(),
+        media_type="application/x-ndjson",
+        headers={
+            "X-Accel-Buffering": "no",
+            "Cache-Control": "no-cache",
+        },
+    )
 
 
 @app.post("/intervene")

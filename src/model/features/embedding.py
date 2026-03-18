@@ -48,27 +48,48 @@ def encode_prompt(prompt: str, pipeline) -> torch.Tensor:
     return prompt_embeds, pooled_prompt_embeds
 
 
+def _slerp(a: torch.Tensor, b: torch.Tensor, alpha: float) -> torch.Tensor:
+    """
+    Spherical linear interpolation — interpolates along the surface of a
+    hypersphere, preserving embedding magnitude unlike lerp.
+    Falls back to lerp when vectors are nearly parallel.
+    """
+    a_f = a.float()
+    b_f = b.float()
+
+    a_norm = torch.nn.functional.normalize(a_f, dim=-1)
+    b_norm = torch.nn.functional.normalize(b_f, dim=-1)
+
+    dot       = (a_norm * b_norm).sum(dim=-1, keepdim=True).clamp(-1, 1)
+    theta     = torch.acos(dot.abs())
+    sin_theta = torch.sin(theta)
+
+    parallel = sin_theta < 1e-6
+    slerp_out = (
+        torch.sin((1.0 - alpha) * theta) / sin_theta * a_f +
+        torch.sin(alpha * theta)          / sin_theta * b_f
+    )
+    lerp_out = (1.0 - alpha) * a_f + alpha * b_f
+
+    return torch.where(parallel, lerp_out, slerp_out).to(a.dtype)
+
+
 def mix_embeddings(
     emb_a: tuple[torch.Tensor, torch.Tensor],
     emb_b: tuple[torch.Tensor, torch.Tensor],
     alpha: float,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """
-    Linearly interpolate between two encoded prompts.
+    Spherically interpolate between two encoded prompts.
     alpha=0.0 → fully emb_a, alpha=1.0 → fully emb_b.
 
-    Args:
-        emb_a: (prompt_embeds, pooled_prompt_embeds) from encode_prompt
-        emb_b: (prompt_embeds, pooled_prompt_embeds) from encode_prompt
-        alpha: interpolation weight in [0, 1]
+    Uses slerp instead of lerp to preserve embedding magnitude,
+    producing genuine blends rather than snapping to one prompt.
     """
     seq_a, pooled_a = emb_a
     seq_b, pooled_b = emb_b
 
-    seq_mixed    = (1 - alpha) * seq_a    + alpha * seq_b
-    pooled_mixed = (1 - alpha) * pooled_a + alpha * pooled_b
-
-    return seq_mixed, pooled_mixed
+    return _slerp(seq_a, seq_b, alpha), _slerp(pooled_a, pooled_b, alpha)
 
 
 def directional_embedding(

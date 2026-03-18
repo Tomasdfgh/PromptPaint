@@ -13,12 +13,12 @@ RUN ln -sf /usr/bin/python3.11 /usr/bin/python && \
 
 WORKDIR /app
 
-COPY requirements.txt .
+COPY src/model/requirements.txt .
 # Install torch with CUDA 12.1 first, then the rest
 RUN pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121 && \
     pip install -r requirements.txt
 
-COPY . .
+COPY src/model/ .
 
 # HuggingFace cache — mount a volume here to persist downloaded weights
 ENV HF_HOME=/model-cache

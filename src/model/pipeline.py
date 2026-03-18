@@ -37,8 +37,11 @@ def load_pipeline() -> StableDiffusionXLPipeline:
         use_safetensors=True,
     ).to(DEVICE)
 
-    # Memory optimizations — safe to enable on 16GB VRAM
+    # Memory optimizations
     pipe.enable_attention_slicing()
+
+    # SDXL VAE is numerically unstable in float16 — keep in float32
+    pipe.vae = pipe.vae.to(torch.float32)
 
     # Keep text encoders on GPU for fast repeated encoding
     pipe.text_encoder   = pipe.text_encoder.to(DEVICE)
