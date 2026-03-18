@@ -1,10 +1,11 @@
+import json
 import os
-import threading
 
-from flask import Flask, jsonify, request
-from flask_socketio import SocketIO, emit
-from flask_cors import CORS
+import requests
 from dotenv import load_dotenv
+from flask import Flask, jsonify
+from flask_cors import CORS
+from flask_socketio import SocketIO, emit
 
 load_dotenv()
 
@@ -21,24 +22,25 @@ socketio = SocketIO(
     engineio_logger=False,
 )
 
+MODEL_URL = os.getenv('MODEL_SERVICE_URL', 'http://model:8000')
+
 
 # ---------------------------------------------------------------------------
-# REST endpoints
+# REST
 # ---------------------------------------------------------------------------
 
 @app.route('/api/health', methods=['GET'])
 def health():
-    from pipeline import get_pipeline
     try:
-        get_pipeline()
-        model_status = "loaded"
-    except RuntimeError:
-        model_status = "not loaded"
+        r = requests.get(f'{MODEL_URL}/health', timeout=3)
+        model_status = r.json()
+    except Exception:
+        model_status = 'unreachable'
     return jsonify({'status': 'ok', 'model': model_status})
 
 
 # ---------------------------------------------------------------------------
-# Socket.IO events
+# Socket.IO
 # ---------------------------------------------------------------------------
 
 @socketio.on('connect')
@@ -49,75 +51,57 @@ def on_connect():
 @socketio.on('generate')
 def on_generate(data):
     """
-    Start a generation. Payload shape depends on mode:
+    Forward the generate request to the model service and stream
+    progress events back to the client via Socket.IO.
 
-    Standard:
-      { mode: "standard", prompt, steps, cfg_scale, negative_prompt }
-
-    Mixing:
-      { mode: "mixing", prompt_a, prompt_b, alpha, steps, cfg_scale }
-
-    Directional:
-      { mode: "directional", prompt, from_concept, to_concept, scale, steps }
-
-    Stencil:
-      { mode: "stencil", prompt_a, prompt_b, strokes: [{x,y,radius}], steps }
-
-    Intervention:
-      { mode: "intervention", prompt, intervention_prompt, intervention_step, steps }
+    Uses socketio.start_background_task (eventlet-safe) instead of
+    raw threading.Thread.
     """
-    from generation import run_generation, generation_state
+    from flask_socketio import rooms
+    sid = rooms()[0]  # current socket session id
 
-    if generation_state.running:
-        emit('error', {'message': 'Generation already in progress'})
-        return
+    def stream_generation(sid, data):
+        try:
+            with requests.post(
+                f'{MODEL_URL}/generate',
+                json=data,
+                stream=True,
+                timeout=600,
+            ) as resp:
+                for line in resp.iter_lines():
+                    if not line:
+                        continue
+                    event = json.loads(line)
+                    etype = event.pop('type', 'progress')
+                    socketio.emit(etype, event, to=sid)
+        except Exception as e:
+            socketio.emit('error', {'message': str(e)}, to=sid)
 
-    sid = request.sid
-
-    thread = threading.Thread(
-        target=run_generation,
-        args=(data, socketio, sid),
-        daemon=True,
-    )
-    thread.start()
+    socketio.start_background_task(stream_generation, sid, data)
 
 
 @socketio.on('intervene')
 def on_intervene(data):
-    """
-    Hot-swap the active embedding mid-generation.
-    { prompt: "new prompt text" }
-    """
-    from generation import generation_state
-    from pipeline import get_pipeline
-    from features.embedding import encode_prompt
-
-    if not generation_state.running:
-        emit('error', {'message': 'No generation in progress'})
-        return
-
-    prompt = data.get('prompt', '')
-    pipe = get_pipeline()
-    new_emb = encode_prompt(prompt, pipe)
-    generation_state.set_embedding(new_emb)
-    emit('status', {'message': f'Prompt updated at step {generation_state.current_step}'})
+    """Hot-swap prompt mid-generation."""
+    try:
+        r = requests.post(f'{MODEL_URL}/intervene', json=data, timeout=5)
+        emit('status', r.json())
+    except Exception as e:
+        emit('error', {'message': str(e)})
 
 
 @socketio.on('cancel')
 def on_cancel():
-    """Cancel the current generation."""
-    from generation import generation_state
-    generation_state.request_cancel()
-    emit('status', {'message': 'Cancellation requested'})
+    try:
+        requests.post(f'{MODEL_URL}/cancel', timeout=3)
+        emit('status', {'message': 'Cancellation requested'})
+    except Exception as e:
+        emit('error', {'message': str(e)})
 
 
 # ---------------------------------------------------------------------------
 
 if __name__ == '__main__':
-    # Load model at startup so the first request isn't slow
-    from pipeline import load_pipeline
-    load_pipeline()
-
-    port = int(os.getenv('PORT', 5000))
+    port  = int(os.getenv('PORT', 5000))
     debug = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
     socketio.run(app, host='0.0.0.0', port=port, debug=debug, allow_unsafe_werkzeug=True)

@@ -4,13 +4,4 @@ flask-cors>=4.0.0
 python-socketio>=5.10.0
 eventlet>=0.33.0
 python-dotenv>=1.0.0
-Pillow>=10.0.0
-numpy
-
-# Diffusion pipeline
-torch>=2.1.0
-torchvision>=0.16.0
-diffusers>=0.27.0
-transformers>=4.38.0
-accelerate>=0.28.0
-safetensors>=0.4.0
+requests>=2.31.0
