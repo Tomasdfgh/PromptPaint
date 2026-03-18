@@ -1,67 +1,167 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { io } from 'socket.io-client';
+import Sidebar from './components/Sidebar';
+import Canvas from './components/Canvas';
 import './App.css';
 
 const socket = io({ path: '/socket.io' });
 
-function App() {
-  const [prompt, setPrompt] = useState('');
-  const [status, setStatus] = useState('idle');
-  const [connected, setConnected] = useState(false);
+const DEFAULT_PARAMS = {
+  prompt: '',
+  negative_prompt: '',
+  prompt_a: '',
+  prompt_b: '',
+  from_concept: '',
+  to_concept: '',
+  intervention_prompt: '',
+  alpha: 0.5,
+  scale: 1.0,
+  steps: 30,
+  cfg_scale: 7.5,
+  preview_every: 5,
+  intervention_step: 15,
+};
 
+export default function App() {
+  const [connected,   setConnected]   = useState(false);
+  const [mode,        setMode]        = useState('standard');
+  const [params,      setParams]      = useState(DEFAULT_PARAMS);
+  const [generating,  setGenerating]  = useState(false);
+  const [step,        setStep]        = useState(0);
+  const [totalSteps,  setTotalSteps]  = useState(0);
+  const [imageB64,    setImageB64]    = useState(null);
+  const [strokes,     setStrokes]     = useState([]);
+  const [brushRadius, setBrushRadius] = useState(20);
+  const [statusMsg,   setStatusMsg]   = useState('');
+
+  const overlayRef = useRef(null); // for clearing stencil strokes
+
+  // ---------------------------------------------------------------------------
+  // Socket event listeners
+  // ---------------------------------------------------------------------------
   useEffect(() => {
-    socket.on('connect', () => setConnected(true));
+    socket.on('connect',    () => setConnected(true));
     socket.on('disconnect', () => setConnected(false));
-    socket.on('generation_update', (data) => {
-      setStatus(data.status);
+
+    socket.on('progress', (data) => {
+      setStep(data.step);
+      setTotalSteps(data.total);
+      if (data.preview) setImageB64(data.preview);
     });
+
+    socket.on('result', (data) => {
+      setImageB64(data.image);
+      setGenerating(false);
+      setStep(0);
+      setStatusMsg('Done');
+    });
+
+    socket.on('cancelled', () => {
+      setGenerating(false);
+      setStep(0);
+      setStatusMsg('Cancelled');
+    });
+
+    socket.on('error', (data) => {
+      setGenerating(false);
+      setStatusMsg(`Error: ${data.message}`);
+    });
+
+    socket.on('status', (data) => {
+      setStatusMsg(data.message);
+    });
+
     return () => {
       socket.off('connect');
       socket.off('disconnect');
-      socket.off('generation_update');
+      socket.off('progress');
+      socket.off('result');
+      socket.off('cancelled');
+      socket.off('error');
+      socket.off('status');
     };
   }, []);
 
-  const handleGenerate = () => {
-    if (!prompt.trim()) return;
-    setStatus('started');
-    socket.emit('generate', { prompt });
-  };
+  // ---------------------------------------------------------------------------
+  // Actions
+  // ---------------------------------------------------------------------------
+  const handleGenerate = useCallback(() => {
+    if (generating) return;
 
+    const payload = {
+      mode,
+      ...params,
+      strokes: mode === 'stencil' ? strokes : undefined,
+    };
+
+    setGenerating(true);
+    setStep(0);
+    setTotalSteps(params.steps || 30);
+    setStatusMsg('Starting…');
+    socket.emit('generate', payload);
+  }, [generating, mode, params, strokes]);
+
+  const handleIntervene = useCallback(() => {
+    socket.emit('intervene', { prompt: params.intervention_prompt });
+    setStatusMsg(`Intervened at step ${step}`);
+  }, [params.intervention_prompt, step]);
+
+  const handleCancel = useCallback(() => {
+    socket.emit('cancel');
+    setStatusMsg('Cancelling…');
+  }, []);
+
+  const handleModeChange = useCallback((newMode) => {
+    setMode(newMode);
+    setStatusMsg('');
+  }, []);
+
+  // Keyboard shortcut: Cmd/Ctrl+Enter to generate
+  useEffect(() => {
+    const handler = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') handleGenerate();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [handleGenerate]);
+
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
   return (
     <div className="app">
       <header className="app-header">
         <span className="logo">PromptPaint</span>
-        <span className={`connection-dot ${connected ? 'connected' : 'disconnected'}`} title={connected ? 'Connected' : 'Disconnected'} />
+        <div className="header-right">
+          {statusMsg && <span className="status-msg">{statusMsg}</span>}
+          <span
+            className={`connection-dot ${connected ? 'connected' : 'disconnected'}`}
+            title={connected ? 'Connected' : 'Disconnected'}
+          />
+        </div>
       </header>
 
       <main className="app-body">
-        <aside className="sidebar">
-          <section className="panel">
-            <h2>Prompt</h2>
-            <textarea
-              className="prompt-input"
-              rows={4}
-              placeholder="Describe what you want to paint..."
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter' && e.metaKey) handleGenerate(); }}
-            />
-            <button className="btn-generate" onClick={handleGenerate} disabled={status === 'started'}>
-              {status === 'started' ? 'Generating…' : 'Generate'}
-            </button>
-          </section>
-        </aside>
+        <Sidebar
+          mode={mode}               onModeChange={handleModeChange}
+          params={params}           onParamsChange={setParams}
+          onGenerate={handleGenerate}
+          onIntervene={handleIntervene}
+          onCancel={handleCancel}
+          generating={generating}
+          step={step}               totalSteps={totalSteps}
+          brushRadius={brushRadius} onBrushRadiusChange={setBrushRadius}
+        />
 
         <section className="canvas-area">
-          <div className="canvas-placeholder">
-            <p>Canvas coming soon</p>
-            <p className="canvas-sub">Your generated image will appear here</p>
-          </div>
+          <Canvas
+            imageB64={imageB64}
+            stencilMode={mode === 'stencil'}
+            brushRadius={brushRadius}
+            onStrokesChange={setStrokes}
+          />
         </section>
       </main>
     </div>
   );
 }
-
-export default App;
