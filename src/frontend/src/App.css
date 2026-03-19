@@ -3,6 +3,10 @@
   margin: 0;
   padding: 0;
 }
+*::-webkit-scrollbar { width: 3px; height: 3px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+* { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
 
 :root {
   --bg:           #0a0a0a;
@@ -201,7 +205,12 @@ body {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
 }
+.panels::-webkit-scrollbar { width: 2px; }
+.panels::-webkit-scrollbar-track { background: transparent; }
+.panels::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
 .sidebar-bottom {
   flex-shrink: 0;
@@ -271,7 +280,14 @@ body {
   flex-direction: column;
   gap: 8px;
   margin-bottom: 8px;
+  max-height: 168px;
+  overflow-y: auto;
+  scrollbar-width: 2px;
+  scrollbar-color: var(--border) transparent;
 }
+.prompt-list::-webkit-scrollbar { width: 2px; }
+.prompt-list::-webkit-scrollbar-track { background: transparent; }
+.prompt-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
 .prompt-list-row {
   display: flex;
@@ -310,6 +326,17 @@ body {
   margin-top: 4px;
   transition: transform 0.15s, box-shadow 0.15s;
   box-shadow: 0 0 0 2px transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.prompt-color-dot-num {
+  font-size: 9px;
+  font-weight: 700;
+  color: white;
+  pointer-events: none;
+  user-select: none;
+  line-height: 1;
 }
 .prompt-color-dot:hover {
   transform: scale(1.15);
@@ -378,6 +405,12 @@ body {
   margin-top: 0;
   flex-shrink: 0;
 }
+.btn-small.prompt-remove-btn {
+  padding: 2px 6px;
+  font-size: 9px;
+  margin-top: 3px;
+  margin-right: 4px;
+}
 
 .prompt-input-wrap {
   flex: 1;
@@ -399,7 +432,7 @@ body {
   scrollbar-color: var(--border) transparent;
 }
 .prompt-list-panel .prompt-input::-webkit-scrollbar {
-  width: 4px;
+  width: 2px;
 }
 .prompt-list-panel .prompt-input::-webkit-scrollbar-track {
   background: transparent;
@@ -703,17 +736,26 @@ body {
 }
 .btn-small:hover { color: var(--text); }
 
+.prompt-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.prompt-list-header .field-label {
+  margin-bottom: 0;
+}
 .btn-add-prompt {
-  width: 100%;
-  padding: 7px 0;
+  padding: 2px 7px;
   background: transparent;
   color: var(--accent);
   border: 1px dashed var(--accent);
   border-radius: var(--radius);
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 600;
   cursor: pointer;
   transition: background 0.15s;
+  flex-shrink: 0;
 }
 .btn-add-prompt:hover { background: var(--accent-dim); }
 
@@ -721,6 +763,42 @@ body {
 
 .prompt-palette-panel {
   flex-shrink: 0;
+}
+.prompt-palette-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.prompt-palette-header .field-label {
+  margin-bottom: 0;
+}
+.palette-fix-toggle {
+  display: flex;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 2px;
+  gap: 2px;
+}
+.palette-fix-btn {
+  font-size: 9px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 3px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  line-height: 1;
+}
+.palette-fix-btn.active {
+  background: var(--accent);
+  color: #fff;
+}
+.palette-fix-btn:not(.active):hover {
+  color: var(--text);
 }
 
 .prompt-palette-svg {
@@ -910,6 +988,7 @@ body {
   transform-origin: center center;
   transition: transform 0.05s ease-out;
   flex-shrink: 0;
+  container-type: size;
 }
 
 .canvas-base,
@@ -961,14 +1040,14 @@ body {
   margin-bottom: 14%;
 }
 .canvas-logo {
-  width: 54%;
-  max-width: 420px;
+  width: 42%;
+  max-width: 42cqw;
   pointer-events: none;
   user-select: none;
 }
 .canvas-welcome {
   margin-top: 14px;
-  font-size: 20px;
+  font-size: 2.5cqw;
   font-weight: 600;
   color: var(--text-muted);
 }
@@ -1478,5 +1557,4 @@ body {
   .logo-subtitle { display: none; }
   .uoft-logo     { height: 42px; }
   .mode-tab      { font-size: 10px; padding: 5px 2px; }
-  .canvas-welcome { font-size: 16px; }
 }

@@ -14,7 +14,7 @@ const DEFAULT_PARAMS = {
   prompt: '',
   prompt_a: '',
   prompt_b: '',
-  prompts: [{ text: '', color: '#e8455c', weight: 1 }],
+  prompts: [{ text: '', color: '#e8455c', weight: 1 }, { text: '', color: '#4fa3e8', weight: 1 }],
   from_concept: '',
   to_concept: '',
   intervention_prompt: '',

@@ -66,7 +66,7 @@ export default function Sidebar({
 
         {mode === 'standard' && (
           <PromptPalette prompts={
-            params.prompts?.length > 0 ? params.prompts : [{ text: '', color: promptHue(0), weight: 1 }]
+            params.prompts?.length > 0 ? params.prompts : [{ text: '', color: promptHue(0), weight: 1 }, { text: '', color: promptHue(1), weight: 1 }]
           } />
         )}
 
@@ -109,17 +109,16 @@ export default function Sidebar({
           >
             {queuePos ? (
             `Queued (${queuePos})`
-          ) : generating ? (
-            'Generating…'
           ) : (
             <>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 15, height: 15, marginRight: 6, verticalAlign: 'middle', display: 'inline' }}>
-                <path d="M12 19l7-7 3 3-7 7-3-3z"/>
-                <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/>
-                <path d="M2 2l11.5 11.5"/>
-                <circle cx="11" cy="11" r="2" fill="currentColor" stroke="none"/>
+                <path d="M3 21v-4a4 4 0 1 1 4 4H3z"/>
+                <path d="M15 7l-6.5 6.5a1.5 1.5 0 0 0 3 3L18 10a1.5 1.5 0 0 0-3-3z"/>
+                <path d="M9.5 11.5l-2-2"/>
+                <path d="M13.5 7.5l-2-2"/>
+                <path d="M17 3l4 4"/>
               </svg>
-              Paint
+              {generating ? 'Painting…' : 'Paint'}
             </>
           )}
           </button>
@@ -163,7 +162,7 @@ export default function Sidebar({
 // Mode panels
 // ---------------------------------------------------------------------------
 
-function ColorPicker({ color, onChange }) {
+function ColorPicker({ color, onChange, index }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   const hue = hexToHue(color);
@@ -181,7 +180,9 @@ function ColorPicker({ color, onChange }) {
         className="prompt-color-dot"
         style={{ background: color }}
         onClick={() => setOpen(o => !o)}
-      />
+      >
+        {index !== undefined && <span className="prompt-color-dot-num">{index + 1}</span>}
+      </div>
       {open && (
         <div className="color-swatch-popover">
           <input
@@ -222,7 +223,7 @@ function PromptRow({ prompt, index, onUpdate, onRemove, showRemove, showWeight, 
   return (
     <div className="prompt-list-row">
       <div className="prompt-list-row-main">
-        <ColorPicker color={prompt.color} onChange={c => onUpdate('color', c)} />
+        <ColorPicker color={prompt.color} onChange={c => onUpdate('color', c)} index={index} />
 
         <div className="prompt-input-wrap">
           <textarea
@@ -250,20 +251,6 @@ function PromptRow({ prompt, index, onUpdate, onRemove, showRemove, showWeight, 
         )}
       </div>
 
-      {showWeight && (
-        <div className="prompt-weight-row">
-          <span className="prompt-weight-pct">
-            {totalWeight > 0 ? Math.round(((prompt.weight ?? 1) / totalWeight) * 100) : 0}%
-          </span>
-          <input
-            type="range" min={0} max={10} step={0.1}
-            value={prompt.weight ?? 1}
-            onChange={e => onUpdate('weight', parseFloat(e.target.value))}
-            className="slider"
-            style={sliderBg(prompt.weight ?? 1, 0, 10)}
-          />
-        </div>
-      )}
     </div>
   );
 }
@@ -271,7 +258,7 @@ function PromptRow({ prompt, index, onUpdate, onRemove, showRemove, showWeight, 
 function PromptListPanel({ params, set }) {
   const prompts = params.prompts?.length > 0
     ? params.prompts
-    : [{ text: '', color: promptHue(0), weight: 1 }];
+    : [{ text: '', color: promptHue(0), weight: 1 }, { text: '', color: promptHue(1), weight: 1 }];
 
   const totalWeight = prompts.reduce((s, p) => s + (p.weight ?? 1), 0);
   const multiPrompt = prompts.length > 1;
@@ -289,9 +276,10 @@ function PromptListPanel({ params, set }) {
 
   return (
     <section className="panel prompt-list-panel">
-      <label className="field-label">
-        {multiPrompt ? 'Prompt Mixing' : 'Prompt'}
-      </label>
+      <div className="prompt-list-header">
+        <label className="field-label">Prompt List</label>
+        <button className="btn-add-prompt" onClick={addPrompt}>+ Add Prompt</button>
+      </div>
       <div className="prompt-list">
         {prompts.map((p, i) => (
           <PromptRow
@@ -306,7 +294,6 @@ function PromptListPanel({ params, set }) {
           />
         ))}
       </div>
-      <button className="btn-add-prompt" onClick={addPrompt}>+ Add prompt</button>
     </section>
   );
 }
@@ -354,6 +341,10 @@ function PromptPalette({ prompts }) {
   const [positions, setPositions] = useState(() =>
     prompts.map((_, i) => defaultPalettePos(i, prompts.length))
   );
+  const [fixed, setFixed] = useState(false);
+  const [hoveredDot, setHoveredDot] = useState(null);
+  const [selectedDot, setSelectedDot] = useState(null);
+  const [mousePos, setMousePos] = useState(null);
 
   const setHeightScale = (v) => {
     heightScaleRef.current = v;
@@ -375,17 +366,22 @@ function PromptPalette({ prompts }) {
     return pt.matrixTransform(svg.getScreenCTM().inverse());
   }, []);
 
+  const fixedRef = useRef(fixed);
+  fixedRef.current = fixed;
+
   const handleDotMouseDown = useCallback((index, e) => {
+    if (fixedRef.current) return;
     e.preventDefault();
     dotDragRef.current = index;
 
     const onMove = (me) => {
       if (dotDragRef.current === null) return;
       const { x, y } = toSVGCoords(me.clientX, me.clientY);
+      const maxY = VH * heightScaleRef.current - DOT_R;
       setPositions(prev => prev.map((p, i) =>
         i === dotDragRef.current
           ? { x: Math.min(Math.max(DOT_R, x), VW - DOT_R),
-              y: Math.min(Math.max(DOT_R, y), VH - DOT_R) }
+              y: Math.min(Math.max(DOT_R, y), maxY) }
           : p
       ));
     };
@@ -423,14 +419,38 @@ function PromptPalette({ prompts }) {
 
   const viewHeight = Math.round(VH * heightScale);
 
+  // Rotate + scale the palette so it fills VW×viewHeight while preserving its own aspect ratio.
+  // Solve: bounding box of rotated VW×VH rectangle == VW×viewHeight
+  // → θ = arctan((VW·VH·(h−1)) / (VW²−VH²·h)),  s = VW / (VW·cosθ + VH·sinθ)
+  const tanTheta = (VW * VH * (heightScale - 1)) / (VW * VW - VH * VH * heightScale);
+  const theta    = Math.atan(tanTheta);
+  const thetaDeg = theta * 180 / Math.PI;
+  const bw           = VW * Math.cos(theta) + VH * Math.sin(theta);
+  const paletteScale = VW / bw;
+  // Rotate around palette centre (VW/2, VH/2), then place at viewBox centre
+  const paletteTransform =
+    `translate(${VW / 2},${viewHeight / 2}) scale(${paletteScale}) rotate(${thetaDeg}) translate(${-VW / 2},${-VH / 2})`;
+
   return (
     <section className="panel prompt-palette-panel" ref={panelRef}>
-      <label className="field-label">Palette</label>
+      <div className="prompt-palette-header">
+        <label className="field-label">Prompt Palette</label>
+        <div className="palette-fix-toggle">
+          <button className={`palette-fix-btn${fixed ? ' active' : ''}`} onClick={() => setFixed(true)}>Fixed</button>
+          <button className={`palette-fix-btn${!fixed ? ' active' : ''}`} onClick={() => setFixed(false)}>Edit</button>
+        </div>
+      </div>
       <svg
         ref={svgRef}
         viewBox={`0 0 ${VW} ${viewHeight}`}
         className="prompt-palette-svg"
         style={{ userSelect: 'none', overflow: 'visible' }}
+        onClick={() => !fixed && setSelectedDot(null)}
+        onMouseMove={(e) => {
+          if (fixed || selectedDot === null) return;
+          setMousePos(toSVGCoords(e.clientX, e.clientY));
+        }}
+        onMouseLeave={() => setMousePos(null)}
       >
         <defs>
           <filter id="dot-shadow" x="-30%" y="-30%" width="160%" height="160%">
@@ -438,21 +458,28 @@ function PromptPalette({ prompts }) {
           </filter>
         </defs>
 
-        <path d={PALETTE_PATH} className="palette-surface" />
-        <ellipse cx="32" cy="52" rx="14" ry="19" className="palette-thumb-hole" />
+        <g transform={paletteTransform}>
+          <path d={PALETTE_PATH} className="palette-surface" />
+          <ellipse cx="32" cy="52" rx="14" ry="19" className="palette-thumb-hole" />
+        </g>
 
         {prompts.map((prompt, i) => {
           const pos = positions[i] ?? defaultPalettePos(i, prompts.length);
+          const highlighted = !fixed && (hoveredDot === i || selectedDot === i);
           return (
             <g
               key={i}
               transform={`translate(${pos.x},${pos.y})`}
               onMouseDown={(e) => handleDotMouseDown(i, e)}
-              style={{ cursor: 'grab' }}
+              onMouseEnter={() => !fixed && setHoveredDot(i)}
+              onMouseLeave={() => setHoveredDot(null)}
+              onClick={(e) => { e.stopPropagation(); if (!fixed) setSelectedDot(i); }}
+              style={{ cursor: fixed ? 'default' : 'grab' }}
             >
+              {highlighted && (
+                <circle r={DOT_R + 2} fill="none" stroke="#4ade80" strokeWidth="2.5" opacity="1" style={{ pointerEvents: 'none' }} />
+              )}
               <circle r={DOT_R} fill={prompt.color} filter="url(#dot-shadow)" />
-              <circle r={DOT_R * 0.55} cx={-DOT_R * 0.25} cy={-DOT_R * 0.3}
-                fill="rgba(255,255,255,0.22)" style={{ pointerEvents: 'none' }} />
               <text
                 textAnchor="middle"
                 dominantBaseline="central"
@@ -466,6 +493,42 @@ function PromptPalette({ prompts }) {
             </g>
           );
         })}
+
+        {mousePos && selectedDot !== null && (() => {
+          const from = positions[selectedDot] ?? defaultPalettePos(selectedDot, prompts.length);
+          // Determine endpoint: stop at hovered dot's green circle edge, or follow cursor
+          let toX = mousePos.x;
+          let toY = mousePos.y;
+          if (hoveredDot !== null && hoveredDot !== selectedDot) {
+            const hPos = positions[hoveredDot] ?? defaultPalettePos(hoveredDot, prompts.length);
+            toX = hPos.x;
+            toY = hPos.y;
+          }
+          const dx = toX - from.x;
+          const dy = toY - from.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          const startR = DOT_R + 2;
+          const endR = hoveredDot !== null && hoveredDot !== selectedDot ? DOT_R + 2 : 0;
+          if (dist < startR + endR) return null;
+          const nx = dx / dist;
+          const ny = dy / dist;
+          const isFreeEnd = hoveredDot === null || hoveredDot === selectedDot;
+          return (
+            <g style={{ pointerEvents: 'none' }}>
+              <line
+                x1={from.x + nx * startR} y1={from.y + ny * startR}
+                x2={toX - nx * endR} y2={toY - ny * endR}
+                stroke="#4ade80"
+                strokeWidth="9"
+                strokeLinecap="butt"
+                opacity="1"
+              />
+              {isFreeEnd && (
+                <circle cx={toX} cy={toY} r={4.5} fill="#4ade80" opacity="1" />
+              )}
+            </g>
+          );
+        })()}
       </svg>
 
       <div className="palette-resize-handle" onMouseDown={handleResizeMouseDown} />
