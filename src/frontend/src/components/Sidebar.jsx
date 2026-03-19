@@ -1,4 +1,11 @@
 
+const sliderBg = (val, min, max) => {
+  const pct = Math.round(((val - min) / (max - min)) * 100);
+  return {
+    background: `linear-gradient(to right, var(--accent) ${pct}%, var(--border) ${pct}%)`,
+  };
+};
+
 const MODES = [
   { id: 'standard',     label: 'Standard'     },
   { id: 'mixing',       label: 'Mixing'        },
@@ -18,20 +25,6 @@ export default function Sidebar({
 
   return (
     <aside className="sidebar">
-
-      {/* Mode tabs */}
-      <div className="mode-tabs">
-        {MODES.map(m => (
-          <button
-            key={m.id}
-            className={`mode-tab ${mode === m.id ? 'active' : ''}`}
-            onClick={() => onModeChange(m.id)}
-            disabled={generating}
-          >
-            {m.label}
-          </button>
-        ))}
-      </div>
 
       {/* Mode-specific panels */}
       <div className="panels">
@@ -69,12 +62,44 @@ export default function Sidebar({
 
       {/* Bottom: generation settings + progress + actions */}
       <div className="sidebar-bottom">
-        <SharedParams params={params} set={set} />
 
-        {/* Progress / queue status */}
-        {generating && (
-          <div className="progress-section">
+        {/* Generate area: hover reveals settings above the button */}
+        <div className="generate-area">
+          <SharedParams params={params} set={set} />
+
+          {/* Action buttons */}
+          <div className="action-row">
+          <button
+            className="btn-generate"
+            onClick={onGenerate}
+            disabled={generating}
+          >
             {queuePos ? (
+            `Queued (${queuePos})`
+          ) : generating ? (
+            'Generating…'
+          ) : (
+            <>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 15, height: 15, marginRight: 6, verticalAlign: 'middle', display: 'inline' }}>
+                <path d="M12 19l7-7 3 3-7 7-3-3z"/>
+                <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/>
+                <path d="M2 2l11.5 11.5"/>
+                <circle cx="11" cy="11" r="2" fill="currentColor" stroke="none"/>
+              </svg>
+              Paint
+            </>
+          )}
+          </button>
+          {generating && (
+            <button className="btn-cancel" onClick={onCancel}>Cancel</button>
+          )}
+        </div>
+
+        </div>{/* end generate-area */}
+
+        <div className="generate-status-bar">
+          {generating ? (
+            queuePos ? (
               <>
                 <div className="progress-bar-track">
                   <div className="progress-bar-fill progress-bar-pulse" style={{ width: '100%' }} />
@@ -91,24 +116,11 @@ export default function Sidebar({
                 </div>
                 <span className="progress-label">{step} / {totalSteps} steps</span>
               </>
-            )}
-          </div>
-        )}
-
-        {/* Action buttons */}
-        <div className="action-row">
-          <button
-            className="btn-generate"
-            onClick={onGenerate}
-            disabled={generating}
-          >
-            {queuePos ? `Queued (${queuePos})` : generating ? 'Generating…' : 'Generate'}
-          </button>
-          {generating && (
-            <button className="btn-cancel" onClick={onCancel}>Cancel</button>
+            )
+          ) : (
+            <p className="generate-notice">Hosted from a private server in Toronto. Expect a queue during high traffic and latency issues if far away.</p>
           )}
         </div>
-        <p className="generate-notice">Hosted from a private server in Toronto. Expect a queue during high traffic and latency issues if far away.</p>
       </div>
     </aside>
   );
@@ -121,7 +133,7 @@ export default function Sidebar({
 function StandardPanel({ params, set }) {
   return (
     <section className="panel">
-      <label className="field-label">Prompt</label>
+      <label className="field-label">Prompt List</label>
       <textarea
         className="prompt-input"
         rows={4}
@@ -185,6 +197,7 @@ function MixingPanel({ params, set }) {
               value={p.weight}
               onChange={e => updatePrompt(i, 'weight', parseFloat(e.target.value))}
               className="slider"
+              style={sliderBg(p.weight, 0, 10)}
             />
           </div>
         </div>
@@ -232,6 +245,7 @@ function DirectionalPanel({ params, set }) {
           value={params.scale || 1}
           onChange={e => set('scale', parseFloat(e.target.value))}
           className="slider"
+          style={sliderBg(params.scale || 1, 0, 3)}
         />
       </div>
     </section>
@@ -268,6 +282,7 @@ function StencilPanel({ params, set, brushRadius, onBrushRadiusChange }) {
           value={brushRadius}
           onChange={e => onBrushRadiusChange(parseInt(e.target.value))}
           className="slider"
+          style={sliderBg(brushRadius, 5, 80)}
         />
       </div>
 
@@ -308,6 +323,7 @@ function InterventionPanel({ params, set, generating, onIntervene, step, totalSt
           value={params.intervention_step || 15}
           onChange={e => set('intervention_step', parseInt(e.target.value))}
           className="slider"
+          style={sliderBg(params.intervention_step || 15, 1, params.steps || 20)}
         />
       </div>
 
@@ -327,51 +343,59 @@ function InterventionPanel({ params, set, generating, onIntervene, step, totalSt
 function SharedParams({ params, set }) {
   return (
     <section className="panel panel-settings">
-      <label className="field-label">Generation settings</label>
-      <div className="slider-row">
-        <label className="field-label">
-          Steps — <span className="slider-value">{params.steps || 20}</span>
-        </label>
-        <input
-          type="range" min={10} max={50} step={1}
-          value={params.steps || 20}
-          onChange={e => set('steps', parseInt(e.target.value))}
-          className="slider"
-        />
-      </div>
-      <div className="slider-row">
-        <label className="field-label">
-          Guide scale — <span className="slider-value">{params.guide_scale ?? 7}</span>
-        </label>
-        <input
-          type="range" min={1} max={15} step={0.5}
-          value={params.guide_scale ?? 7}
-          onChange={e => set('guide_scale', parseFloat(e.target.value))}
-          className="slider"
-        />
-      </div>
-      <div className="slider-row">
-        <label className="field-label">
-          Single stroke — <span className="slider-value">{params.single_stroke ?? 100}%</span>
-        </label>
-        <input
-          type="range" min={10} max={100} step={10}
-          value={params.single_stroke ?? 100}
-          onChange={e => set('single_stroke', parseInt(e.target.value))}
-          className="slider"
-        />
-      </div>
-      <div className="slider-row">
-        <label className="field-label">
-          Overcoat — <span className="slider-value">{params.overcoat ?? 70}%</span>
-        </label>
-        <input
-          type="range" min={0} max={100} step={5}
-          value={params.overcoat ?? 70}
-          onChange={e => set('overcoat', parseInt(e.target.value))}
-          className="slider"
-        />
+      <label className="field-label" style={{ marginBottom: 6 }}>Generation settings</label>
+      <div className="sliders-grid">
+        <div className="slider-row">
+          <label className="field-label">
+            Steps — <span className="slider-value">{params.steps || 20}</span>
+          </label>
+          <input
+            type="range" min={10} max={50} step={1}
+            value={params.steps || 20}
+            onChange={e => set('steps', parseInt(e.target.value))}
+            className="slider"
+            style={sliderBg(params.steps || 20, 10, 50)}
+          />
+        </div>
+        <div className="slider-row">
+          <label className="field-label">
+            Guide scale — <span className="slider-value">{params.guide_scale ?? 7}</span>
+          </label>
+          <input
+            type="range" min={1} max={15} step={0.5}
+            value={params.guide_scale ?? 7}
+            onChange={e => set('guide_scale', parseFloat(e.target.value))}
+            className="slider"
+            style={sliderBg(params.guide_scale ?? 7, 1, 15)}
+          />
+        </div>
+        <div className="slider-row">
+          <label className="field-label">
+            Single stroke — <span className="slider-value">{params.single_stroke ?? 20}%</span>
+          </label>
+          <input
+            type="range" min={10} max={100} step={10}
+            value={params.single_stroke ?? 20}
+            onChange={e => set('single_stroke', parseInt(e.target.value))}
+            className="slider"
+            style={sliderBg(params.single_stroke ?? 20, 10, 100)}
+          />
+        </div>
+        <div className="slider-row">
+          <label className="field-label">
+            Overcoat — <span className="slider-value">{params.overcoat ?? 70}%</span>
+          </label>
+          <input
+            type="range" min={0} max={100} step={5}
+            value={params.overcoat ?? 70}
+            onChange={e => set('overcoat', parseInt(e.target.value))}
+            className="slider"
+            style={sliderBg(params.overcoat ?? 70, 0, 100)}
+          />
+        </div>
       </div>
     </section>
   );
 }
+
+

@@ -1,9 +1,11 @@
+import csv
 import json
 import os
+from datetime import datetime, timezone
 
 import requests
 from dotenv import load_dotenv
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
 
@@ -22,12 +24,65 @@ socketio = SocketIO(
     engineio_logger=False,
 )
 
-MODEL_URL = os.getenv('MODEL_SERVICE_URL', 'http://model:8000')
+MODEL_URL  = os.getenv('MODEL_SERVICE_URL', 'http://model:8000')
+LOGS_DIR   = os.getenv('LOGS_DIR', '/app/logs')
+CONTACT_LOG = os.path.join(LOGS_DIR, 'contact_messages.csv')
+
+os.makedirs(LOGS_DIR, exist_ok=True)
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def get_client_ip():
+    """Return the real client IP, honoring common proxy headers."""
+    if request.headers.get('X-Forwarded-For'):
+        return request.headers.get('X-Forwarded-For').split(',')[0].strip()
+    if request.headers.get('X-Real-IP'):
+        return request.headers.get('X-Real-IP').strip()
+    if request.headers.get('CF-Connecting-IP'):
+        return request.headers.get('CF-Connecting-IP').strip()
+    return request.remote_addr or 'unknown'
+
+
+def write_csv_row(filepath, headers, row):
+    """Append a row to a CSV file, writing headers if the file is new."""
+    file_exists = os.path.exists(filepath)
+    try:
+        with open(filepath, 'a', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            if not file_exists:
+                writer.writerow(headers)
+            writer.writerow(row)
+    except Exception as e:
+        print(f'✗ Failed to write CSV {filepath}: {e}')
 
 
 # ---------------------------------------------------------------------------
 # REST
 # ---------------------------------------------------------------------------
+
+@app.route('/api/contact/message', methods=['POST'])
+def contact_message():
+    body = request.get_json(silent=True) or {}
+    subject = (body.get('subject') or '').strip()
+    message = (body.get('message') or '').strip()
+
+    if not subject or not message:
+        return jsonify({'error': 'Subject and message are required.'}), 400
+
+    ip        = get_client_ip()
+    timestamp = datetime.now(timezone.utc).isoformat()
+
+    write_csv_row(
+        CONTACT_LOG,
+        ['timestamp', 'ip', 'subject', 'message'],
+        [timestamp, ip, subject, message],
+    )
+    print(f'✓ Contact message received | IP: {ip} | Subject: {subject[:40]}')
+    return jsonify({'status': 'ok'}), 200
+
 
 @app.route('/api/health', methods=['GET'])
 def health():

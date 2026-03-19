@@ -22,9 +22,11 @@ const DEFAULT_PARAMS = {
   scale: 1.0,
   steps: 20,
   guide_scale: 7,
-  single_stroke: 100,
+  single_stroke: 20,
   overcoat: 70,
   intervention_step: 15,
+  width: 1344,
+  height: 768,
 };
 
 export default function App() {
@@ -36,7 +38,7 @@ export default function App() {
   const [imageB64,    setImageB64]    = useState(null);
   const [strokes,     setStrokes]     = useState([]);
   const [brushRadius, setBrushRadius] = useState(20);
-  const [statusMsg,   setStatusMsg]   = useState('');
+  const [, setStatusMsg] = useState('');
   const [menuOpen,    setMenuOpen]    = useState(false);
   const [queuePos,    setQueuePos]    = useState(null);
   const [theme, setTheme] = useState(() => localStorage.getItem('pp-theme') || 'dark');
@@ -227,7 +229,21 @@ export default function App() {
 
         <section className="canvas-area">
 
-          {/* Hamburger menu — top-left of canvas area */}
+          {/* Mode tabs — top-left of canvas area */}
+          <div className="canvas-mode-tabs">
+            {['standard', 'mixing', 'directional', 'stencil', 'intervention'].map(m => (
+              <button
+                key={m}
+                className={`mode-tab ${mode === m ? 'active' : ''}`}
+                onClick={() => handleModeChange(m)}
+                disabled={generating}
+              >
+                {m.charAt(0).toUpperCase() + m.slice(1)}
+              </button>
+            ))}
+          </div>
+
+          {/* Hamburger menu — top-right of canvas area */}
           <div className="canvas-menu-container" ref={menuRef}>
             <button className="hamburger-menu" onClick={() => setMenuOpen(o => !o)}>
               <span></span>
@@ -271,6 +287,9 @@ export default function App() {
             stencilMode={mode === 'stencil'}
             brushRadius={brushRadius}
             onStrokesChange={setStrokes}
+            width={params.width}
+            height={params.height}
+            onSizeChange={({ width, height }) => setParams(p => ({ ...p, width, height }))}
           />
           <p className="canvas-area-footer">
             Based on PromptPaint by John Joon Young Chung &amp; Eytan Adar, University of Michigan

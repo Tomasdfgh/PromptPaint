@@ -29,17 +29,19 @@ services:
       - "${BACKEND_PORT:-5000}:5000"
     volumes:
       - ./src/backend:/app/src/backend
+      - ${BASE_REPO_DIR:-/home/thomas-nguyen/Projects/PromptPaint}/logs:/app/logs
     environment:
       - FLASK_ENV=development
       - FLASK_DEBUG=True
       - MODEL_SERVICE_URL=http://model:8000
+      - LOGS_DIR=/app/logs
 
   frontend:
     build:
       context: .
       dockerfile: src/frontend/Dockerfile.dev
     ports:
-      - "${FRONTEND_PORT:-3001}:3000"
+      - "${FRONTEND_DEV_PORT:-3011}:3000"
     volumes:
       - ./src/frontend/src:/app/src
       - ./src/frontend/public:/app/public

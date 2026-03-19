@@ -1,14 +1,34 @@
 import { useState } from 'react';
 
 export default function Contact({ onClose }) {
-  const [subject, setSubject]   = useState('');
-  const [message, setMessage]   = useState('');
+  const [subject,     setSubject]     = useState('');
+  const [message,     setMessage]     = useState('');
+  const [submitting,  setSubmitting]  = useState(false);
+  const [success,     setSuccess]     = useState(false);
+  const [error,       setError]       = useState(null);
 
   const wordCount = message.split(/\s+/).filter(w => w.length > 0).length;
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    // TODO: wire up to backend
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/contact/message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subject, message }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to send message.');
+      }
+      setSuccess(true);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -59,47 +79,56 @@ export default function Contact({ onClose }) {
                 to a backend, so I have no way to reach you back. For direct communication,
                 please use the email above.
               </p>
-              <form className="contact-form" onSubmit={handleSubmit}>
-                <div className="contact-form-field">
-                  <div className="contact-form-field-header">
-                    <label htmlFor="contact-subject">Subject</label>
-                    <span className="contact-char-count">{subject.length} / 60</span>
-                  </div>
-                  <input
-                    id="contact-subject"
-                    type="text"
-                    value={subject}
-                    onChange={(e) => setSubject(e.target.value.slice(0, 60))}
-                    placeholder="What is this about?"
-                    maxLength={60}
-                  />
+              {success ? (
+                <div className="contact-success-message">
+                  <p>Message received. Thanks for reaching out!</p>
                 </div>
-                <div className="contact-form-field">
-                  <div className="contact-form-field-header">
-                    <label htmlFor="contact-message">Message</label>
-                    <span className="contact-char-count">{wordCount} words</span>
+              ) : (
+                <form className="contact-form" onSubmit={handleSubmit}>
+                  <div className="contact-form-field">
+                    <div className="contact-form-field-header">
+                      <label htmlFor="contact-subject">Subject</label>
+                      <span className="contact-char-count">{subject.length} / 60</span>
+                    </div>
+                    <input
+                      id="contact-subject"
+                      type="text"
+                      value={subject}
+                      onChange={(e) => setSubject(e.target.value.slice(0, 60))}
+                      placeholder="What is this about?"
+                      maxLength={60}
+                      disabled={submitting}
+                    />
                   </div>
-                  <textarea
-                    id="contact-message"
-                    value={message}
-                    onChange={(e) => {
-                      const words = e.target.value.split(/\s+/).filter(w => w.length > 0);
-                      if (words.length <= 500 || e.target.value.length < message.length) {
-                        setMessage(e.target.value);
-                      }
-                    }}
-                    placeholder="Your message..."
-                    rows={6}
-                  />
-                </div>
-                <button
-                  type="submit"
-                  className="contact-submit-btn"
-                  disabled={!subject.trim() || !message.trim()}
-                >
-                  Send Message
-                </button>
-              </form>
+                  <div className="contact-form-field">
+                    <div className="contact-form-field-header">
+                      <label htmlFor="contact-message">Message</label>
+                      <span className="contact-char-count">{wordCount} words</span>
+                    </div>
+                    <textarea
+                      id="contact-message"
+                      value={message}
+                      onChange={(e) => {
+                        const words = e.target.value.split(/\s+/).filter(w => w.length > 0);
+                        if (words.length <= 500 || e.target.value.length < message.length) {
+                          setMessage(e.target.value);
+                        }
+                      }}
+                      placeholder="Your message..."
+                      rows={6}
+                      disabled={submitting}
+                    />
+                  </div>
+                  {error && <p className="contact-error-message">{error}</p>}
+                  <button
+                    type="submit"
+                    className="contact-submit-btn"
+                    disabled={submitting || !subject.trim() || !message.trim()}
+                  >
+                    {submitting ? 'Sending…' : 'Send Message'}
+                  </button>
+                </form>
+              )}
             </section>
 
           </div>
