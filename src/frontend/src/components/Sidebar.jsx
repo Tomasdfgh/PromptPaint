@@ -1,4 +1,36 @@
 
+import { useRef, useState, useEffect, useCallback } from 'react';
+
+// Convert hue (0-359) to hex at fixed saturation/lightness
+const hueToHex = (h) => {
+  const s = 0.78, l = 0.55;
+  const a = s * Math.min(l, 1 - l);
+  const f = n => {
+    const k = (n + h / 30) % 12;
+    const c = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+    return Math.round(255 * c).toString(16).padStart(2, '0');
+  };
+  return `#${f(0)}${f(8)}${f(4)}`;
+};
+
+// Extract approximate hue from hex
+const hexToHue = (hex) => {
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  if (max === min) return 0;
+  const d = max - min;
+  let h;
+  if (max === r)      h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+  else if (max === g) h = ((b - r) / d + 2) / 6;
+  else                h = ((r - g) / d + 4) / 6;
+  return Math.round(h * 359);
+};
+
+// Spread new prompts evenly around the hue wheel
+const promptHue = (index) => hueToHex((index * 67) % 360); // 67° golden-angle-ish spacing
+
 const sliderBg = (val, min, max) => {
   const pct = Math.round(((val - min) / (max - min)) * 100);
   return {
@@ -8,7 +40,6 @@ const sliderBg = (val, min, max) => {
 
 const MODES = [
   { id: 'standard',     label: 'Standard'     },
-  { id: 'mixing',       label: 'Mixing'        },
   { id: 'directional',  label: 'Directional'   },
   { id: 'stencil',      label: 'Stencil'       },
   { id: 'intervention', label: 'Intervention'  },
@@ -30,11 +61,13 @@ export default function Sidebar({
       <div className="panels">
 
         {mode === 'standard' && (
-          <StandardPanel params={params} set={set} />
+          <PromptListPanel params={params} set={set} />
         )}
 
-        {mode === 'mixing' && (
-          <MixingPanel params={params} set={set} />
+        {mode === 'standard' && (
+          <PromptPalette prompts={
+            params.prompts?.length > 0 ? params.prompts : [{ text: '', color: promptHue(0), weight: 1 }]
+          } />
         )}
 
         {mode === 'directional' && (
@@ -130,80 +163,312 @@ export default function Sidebar({
 // Mode panels
 // ---------------------------------------------------------------------------
 
-function StandardPanel({ params, set }) {
+function ColorPicker({ color, onChange }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const hue = hexToHue(color);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
   return (
-    <section className="panel">
-      <label className="field-label">Prompt List</label>
-      <textarea
-        className="prompt-input"
-        rows={4}
-        placeholder="Describe what you want to generate..."
-        value={params.prompt || ''}
-        onChange={e => set('prompt', e.target.value)}
+    <div className="color-swatch-wrap" ref={ref}>
+      <div
+        className="prompt-color-dot"
+        style={{ background: color }}
+        onClick={() => setOpen(o => !o)}
       />
+      {open && (
+        <div className="color-swatch-popover">
+          <input
+            type="range"
+            min={0}
+            max={359}
+            value={hue}
+            onChange={e => onChange(hueToHex(parseInt(e.target.value)))}
+            className="hue-slider"
+            style={{ '--thumb-color': color }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PromptRow({ prompt, index, onUpdate, onRemove, showRemove, showWeight, totalWeight }) {
+  const [editing, setEditing] = useState(!prompt.text.trim());
+  const textareaRef = useRef(null);
+
+  const autoResize = (el) => {
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = el.scrollHeight + 'px';
+  };
+
+  useEffect(() => {
+    autoResize(textareaRef.current);
+  }, [prompt.text]);
+
+  useEffect(() => {
+    if (editing) textareaRef.current?.focus();
+  }, [editing]);
+
+  const wordCount = prompt.text.trim() ? prompt.text.trim().split(/\s+/).filter(Boolean).length : 0;
+
+  return (
+    <div className="prompt-list-row">
+      <div className="prompt-list-row-main">
+        <ColorPicker color={prompt.color} onChange={c => onUpdate('color', c)} />
+
+        <div className="prompt-input-wrap">
+          <textarea
+            ref={textareaRef}
+            className={`prompt-input${editing ? '' : ' prompt-input-readonly'}`}
+            rows={1}
+            placeholder={`Prompt ${index + 1}…`}
+            value={prompt.text}
+            readOnly={!editing}
+            onChange={e => {
+              const words = e.target.value.trim().split(/\s+/).filter(Boolean);
+              if (words.length > 30) return;
+              onUpdate('text', e.target.value);
+              autoResize(e.target);
+            }}
+            onFocus={() => setEditing(true)}
+            onBlur={() => { if (prompt.text.trim()) setEditing(false); }}
+            style={{ borderColor: prompt.color + '66' }}
+          />
+          {wordCount > 0 && <span className="prompt-word-count">{wordCount}/30</span>}
+        </div>
+
+        {showRemove && (
+          <button className="btn-small prompt-remove-btn" onClick={onRemove}>✕</button>
+        )}
+      </div>
+
+      {showWeight && (
+        <div className="prompt-weight-row">
+          <span className="prompt-weight-pct">
+            {totalWeight > 0 ? Math.round(((prompt.weight ?? 1) / totalWeight) * 100) : 0}%
+          </span>
+          <input
+            type="range" min={0} max={10} step={0.1}
+            value={prompt.weight ?? 1}
+            onChange={e => onUpdate('weight', parseFloat(e.target.value))}
+            className="slider"
+            style={sliderBg(prompt.weight ?? 1, 0, 10)}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PromptListPanel({ params, set }) {
+  const prompts = params.prompts?.length > 0
+    ? params.prompts
+    : [{ text: '', color: promptHue(0), weight: 1 }];
+
+  const totalWeight = prompts.reduce((s, p) => s + (p.weight ?? 1), 0);
+  const multiPrompt = prompts.length > 1;
+
+  const updatePrompt = (i, field, val) =>
+    set('prompts', prompts.map((p, idx) => idx === i ? { ...p, [field]: val } : p));
+
+  const addPrompt = () =>
+    set('prompts', [...prompts, { text: '', color: promptHue(prompts.length), weight: 1 }]);
+
+  const removePrompt = (i) => {
+    if (prompts.length <= 1) return;
+    set('prompts', prompts.filter((_, idx) => idx !== i));
+  };
+
+  return (
+    <section className="panel prompt-list-panel">
+      <label className="field-label">
+        {multiPrompt ? 'Prompt Mixing' : 'Prompt'}
+      </label>
+      <div className="prompt-list">
+        {prompts.map((p, i) => (
+          <PromptRow
+            key={i}
+            index={i}
+            prompt={p}
+            onUpdate={(field, val) => updatePrompt(i, field, val)}
+            onRemove={() => removePrompt(i)}
+            showRemove={multiPrompt}
+            showWeight={multiPrompt}
+            totalWeight={totalWeight}
+          />
+        ))}
+      </div>
+      <button className="btn-add-prompt" onClick={addPrompt}>+ Add prompt</button>
     </section>
   );
 }
 
-const DEFAULT_PROMPTS = [
-  { text: '', weight: 1 },
-  { text: '', weight: 1 },
-];
 
-function MixingPanel({ params, set }) {
-  const prompts = params.prompts || DEFAULT_PROMPTS;
+// ---------------------------------------------------------------------------
+// Prompt Palette
+// ---------------------------------------------------------------------------
 
-  const updatePrompt = (i, field, value) => {
-    const updated = prompts.map((p, idx) =>
-      idx === i ? { ...p, [field]: value } : p
+const VW = 260;
+const VH = 140;
+const DOT_R = 14;
+
+// Classic painter's palette shape (260×140 viewBox)
+const PALETTE_PATH =
+  'M 46,6 C 22,6 4,22 4,48 C 4,96 36,134 92,134 ' +
+  'C 142,134 184,120 216,96 C 250,70 256,44 250,26 ' +
+  'C 244,10 230,4 214,6 C 196,8 184,22 168,28 ' +
+  'C 152,34 136,22 120,12 C 104,2 82,2 62,4 Z';
+
+const PRESETS = {
+  1: [{ x: 0.56, y: 0.50 }],
+  2: [{ x: 0.40, y: 0.64 }, { x: 0.72, y: 0.40 }],
+  3: [{ x: 0.36, y: 0.70 }, { x: 0.72, y: 0.68 }, { x: 0.58, y: 0.28 }],
+  4: [{ x: 0.36, y: 0.68 }, { x: 0.70, y: 0.68 }, { x: 0.38, y: 0.30 }, { x: 0.70, y: 0.30 }],
+};
+
+function defaultPalettePos(i, total) {
+  const p = PRESETS[Math.min(total, 4)]?.[i];
+  if (p) return { x: p.x * VW, y: p.y * VH };
+  const angle = (i / total) * Math.PI * 2 - Math.PI / 2;
+  return {
+    x: (0.58 + 0.22 * Math.cos(angle)) * VW,
+    y: (0.50 + 0.28 * Math.sin(angle)) * VH,
+  };
+}
+
+function PromptPalette({ prompts }) {
+  const svgRef    = useRef(null);
+  const panelRef  = useRef(null);
+  const dotDragRef    = useRef(null);
+  const heightScaleRef = useRef(1.0);
+
+  const [heightScale, setHeightScaleState] = useState(1.0);
+  const [positions, setPositions] = useState(() =>
+    prompts.map((_, i) => defaultPalettePos(i, prompts.length))
+  );
+
+  const setHeightScale = (v) => {
+    heightScaleRef.current = v;
+    setHeightScaleState(v);
+  };
+
+  useEffect(() => {
+    setPositions(prev =>
+      prompts.map((_, i) => prev[i] ?? defaultPalettePos(i, prompts.length))
     );
-    set('prompts', updated);
-  };
+  }, [prompts.length]);
 
-  const addPrompt = () => set('prompts', [...prompts, { text: '', weight: 1 }]);
+  const toSVGCoords = useCallback((clientX, clientY) => {
+    const svg = svgRef.current;
+    if (!svg) return { x: 0, y: 0 };
+    const pt = svg.createSVGPoint();
+    pt.x = clientX;
+    pt.y = clientY;
+    return pt.matrixTransform(svg.getScreenCTM().inverse());
+  }, []);
 
-  const removePrompt = (i) => {
-    if (prompts.length <= 2) return;
-    set('prompts', prompts.filter((_, idx) => idx !== i));
-  };
+  const handleDotMouseDown = useCallback((index, e) => {
+    e.preventDefault();
+    dotDragRef.current = index;
 
-  const totalWeight = prompts.reduce((s, p) => s + (p.weight || 0), 0);
+    const onMove = (me) => {
+      if (dotDragRef.current === null) return;
+      const { x, y } = toSVGCoords(me.clientX, me.clientY);
+      setPositions(prev => prev.map((p, i) =>
+        i === dotDragRef.current
+          ? { x: Math.min(Math.max(DOT_R, x), VW - DOT_R),
+              y: Math.min(Math.max(DOT_R, y), VH - DOT_R) }
+          : p
+      ));
+    };
+
+    const onUp = () => {
+      dotDragRef.current = null;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [toSVGCoords]);
+
+  const handleResizeMouseDown = useCallback((e) => {
+    e.preventDefault();
+    const startY     = e.clientY;
+    const startScale = heightScaleRef.current;
+    // natural SVG height at current panel width
+    const naturalH   = (panelRef.current?.getBoundingClientRect().width ?? VW) * (VH / VW);
+
+    const onMove = (me) => {
+      const dy = me.clientY - startY;
+      setHeightScale(Math.min(1.4, Math.max(1.0, startScale + dy / naturalH)));
+    };
+
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, []);
+
+  const viewHeight = Math.round(VH * heightScale);
 
   return (
-    <section className="panel">
-      {prompts.map((p, i) => (
-        <div key={i} style={{ marginBottom: 12 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-            <label className="field-label" style={{ margin: 0 }}>Prompt {i + 1}</label>
-            {prompts.length > 2 && (
-              <button className="btn-small" onClick={() => removePrompt(i)}>✕</button>
-            )}
-          </div>
-          <textarea
-            className="prompt-input"
-            rows={2}
-            placeholder={`Concept ${i + 1}...`}
-            value={p.text}
-            onChange={e => updatePrompt(i, 'text', e.target.value)}
-          />
-          <div className="slider-row" style={{ marginTop: 6 }}>
-            <label className="field-label">
-              Weight — <span className="slider-value">
-                {totalWeight > 0 ? Math.round((p.weight / totalWeight) * 100) : 0}%
-              </span>
-            </label>
-            <input
-              type="range" min={0} max={10} step={0.1}
-              value={p.weight}
-              onChange={e => updatePrompt(i, 'weight', parseFloat(e.target.value))}
-              className="slider"
-              style={sliderBg(p.weight, 0, 10)}
-            />
-          </div>
-        </div>
-      ))}
+    <section className="panel prompt-palette-panel" ref={panelRef}>
+      <label className="field-label">Palette</label>
+      <svg
+        ref={svgRef}
+        viewBox={`0 0 ${VW} ${viewHeight}`}
+        className="prompt-palette-svg"
+        style={{ userSelect: 'none', overflow: 'visible' }}
+      >
+        <defs>
+          <filter id="dot-shadow" x="-30%" y="-30%" width="160%" height="160%">
+            <feDropShadow dx="0" dy="2" stdDeviation="2.5" floodOpacity="0.45" />
+          </filter>
+        </defs>
 
-      <button className="btn-add-prompt" onClick={addPrompt}>+ Add prompt</button>
+        <path d={PALETTE_PATH} className="palette-surface" />
+        <ellipse cx="32" cy="52" rx="14" ry="19" className="palette-thumb-hole" />
+
+        {prompts.map((prompt, i) => {
+          const pos = positions[i] ?? defaultPalettePos(i, prompts.length);
+          return (
+            <g
+              key={i}
+              transform={`translate(${pos.x},${pos.y})`}
+              onMouseDown={(e) => handleDotMouseDown(i, e)}
+              style={{ cursor: 'grab' }}
+            >
+              <circle r={DOT_R} fill={prompt.color} filter="url(#dot-shadow)" />
+              <circle r={DOT_R * 0.55} cx={-DOT_R * 0.25} cy={-DOT_R * 0.3}
+                fill="rgba(255,255,255,0.22)" style={{ pointerEvents: 'none' }} />
+              <text
+                textAnchor="middle"
+                dominantBaseline="central"
+                fill="white"
+                fontSize="11"
+                fontWeight="700"
+                style={{ pointerEvents: 'none' }}
+              >
+                {i + 1}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+
+      <div className="palette-resize-handle" onMouseDown={handleResizeMouseDown} />
     </section>
   );
 }

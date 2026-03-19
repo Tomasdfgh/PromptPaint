@@ -14,7 +14,7 @@ const DEFAULT_PARAMS = {
   prompt: '',
   prompt_a: '',
   prompt_b: '',
-  prompts: [{ text: '', weight: 1 }, { text: '', weight: 1 }],
+  prompts: [{ text: '', color: '#e8455c', weight: 1 }],
   from_concept: '',
   to_concept: '',
   intervention_prompt: '',
@@ -122,9 +122,15 @@ export default function App() {
   const handleGenerate = useCallback(() => {
     if (generating) return;
 
+    const prompts = params.prompts || [];
+    // Auto-select mixing when standard mode has multiple prompts
+    const effectiveMode = (mode === 'standard' && prompts.length > 1) ? 'mixing' : mode;
+
     const payload = {
-      mode,
       ...params,
+      mode: effectiveMode,
+      // Standard single-prompt: pull text from prompts[0]
+      prompt: mode === 'standard' ? (prompts[0]?.text || '') : params.prompt,
       strokes: mode === 'stencil' ? strokes : undefined,
     };
 
@@ -231,7 +237,7 @@ export default function App() {
 
           {/* Mode tabs — top-left of canvas area */}
           <div className="canvas-mode-tabs">
-            {['standard', 'mixing', 'directional', 'stencil', 'intervention'].map(m => (
+            {['standard', 'directional', 'stencil', 'intervention'].map(m => (
               <button
                 key={m}
                 className={`mode-tab ${mode === m ? 'active' : ''}`}
