@@ -10,6 +10,7 @@ services:
       - model-cache:/model-cache
     environment:
       - HF_HOME=/model-cache
+      - HF_TOKEN=${HF_TOKEN:-}
     deploy:
       resources:
         reservations:
@@ -33,8 +34,8 @@ services:
     ports:
       - "${BACKEND_PORT:-5000}:5000"
     environment:
-      - FLASK_ENV=${FLASK_ENV:-production}
-      - FLASK_DEBUG=${FLASK_DEBUG:-False}
+      - FLASK_ENV=production
+      - FLASK_DEBUG=False
       - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
       - MODEL_SERVICE_URL=http://model:8000
     depends_on:

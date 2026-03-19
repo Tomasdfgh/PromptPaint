@@ -93,7 +93,7 @@ export default function Canvas({ imageB64, stencilMode, brushRadius, onStrokesCh
     const ctx = canvas.getContext('2d');
     ctx.beginPath();
     ctx.arc(x, y, brushRadius, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(124, 106, 247, 0.45)';
+    ctx.fillStyle = 'rgba(59, 130, 246, 0.45)';
     ctx.fill();
   }, [brushRadius]);
 

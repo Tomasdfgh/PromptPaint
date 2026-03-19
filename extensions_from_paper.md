@@ -31,3 +31,20 @@ The paper used SD v1.5 with 768-dimensional CLIP embeddings. We use SDXL with 20
 
 ### Additional extension: N-prompt mixing
 The paper caps mixing at three prompts. Our implementation supports any number of prompts — each with an independently configurable weight — using the same nlerp formulation, which is order-independent unlike iterative pairwise slerp.
+
+## 2. GPU Job Queue for Multi-User Access
+
+### What the paper does
+The paper describes a single-user interactive tool. There is no discussion of concurrent access or server-side resource management — it was designed as a local desktop application.
+
+### What we do
+We implement a serialized GPU job queue using a single background worker thread and a `stdlib_queue.Queue`. When multiple users submit generation requests simultaneously, each request is assigned a queue position and waits its turn. The client receives a `queued` event with their position immediately, then a `started` event when the worker picks up their job. Generation state is isolated per session using the Socket.IO `sid` as a key into a `sessions` dict protected by a `threading.Lock`.
+
+### Why we added it
+Deploying as a shared web service means multiple users can submit requests at any time. SDXL requires ~10 GB of VRAM on a single GPU — running two generations simultaneously would either OOM or corrupt both outputs. The queue ensures only one generation runs at a time while giving all waiting users real-time feedback on their position.
+
+### Design decisions
+- **Single worker thread**: Simplest correct solution. All GPU operations are synchronous within the worker; no async GPU coordination needed.
+- **Per-session isolation**: Each Socket.IO connection gets its own `GenerationState` (cancel flag, current embedding, step counter). Intervention and cancel requests are routed by `session_id` so one user cannot affect another's generation.
+- **Approximate position estimate**: Queue position is computed as `_gpu_queue.qsize() + (1 if _worker_busy else 0)`. This is a best-effort estimate — race conditions between checking and enqueuing mean the displayed position may be off by one, but this is acceptable for UX purposes.
+- **Worker resilience**: The worker wraps each job in `try/except/finally` so an exception in one generation (e.g., OOM, bad prompt encoding) does not kill the worker thread or block subsequent jobs.

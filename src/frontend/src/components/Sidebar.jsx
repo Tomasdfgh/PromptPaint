@@ -108,6 +108,7 @@ export default function Sidebar({
             <button className="btn-cancel" onClick={onCancel}>Cancel</button>
           )}
         </div>
+        <p className="generate-notice">Hosted from a private server in Toronto. Expect a queue during high traffic and latency issues if far away.</p>
       </div>
     </aside>
   );

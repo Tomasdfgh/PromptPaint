@@ -1,0 +1,116 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 370">
+  <defs>
+    <!-- Monochrome gradient for paint stroke -->
+    <linearGradient id="rg" x1="30" y1="0" x2="670" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0%"   stop-color="#d0d0d0"/>
+      <stop offset="50%"  stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#d0d0d0"/>
+    </linearGradient>
+    <!-- Wood grain for brush handle -->
+    <linearGradient id="wood" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%"   stop-color="#1a1a1a"/>
+      <stop offset="25%"  stop-color="#555555"/>
+      <stop offset="55%"  stop-color="#999999"/>
+      <stop offset="80%"  stop-color="#666666"/>
+      <stop offset="100%" stop-color="#1a1a1a"/>
+    </linearGradient>
+    <!-- Metal ferrule -->
+    <linearGradient id="metal" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%"   stop-color="#2a2a2a"/>
+      <stop offset="35%"  stop-color="#aaaaaa"/>
+      <stop offset="60%"  stop-color="#e0e0e0"/>
+      <stop offset="85%"  stop-color="#707070"/>
+      <stop offset="100%" stop-color="#2a2a2a"/>
+    </linearGradient>
+    <!-- Drop shadow for the arc -->
+    <filter id="arc-sh" x="-5%" y="-20%" width="110%" height="160%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#000" flood-opacity="0.28"/>
+    </filter>
+    <!-- Drop shadow for the brush -->
+    <filter id="br-sh" x="-30%" y="-25%" width="160%" height="150%">
+      <feDropShadow dx="2" dy="6" stdDeviation="6" flood-color="#000" flood-opacity="0.42"/>
+    </filter>
+  </defs>
+
+  <!-- ── Paint stroke ── -->
+  <!-- Dark underpainting for depth -->
+  <path d="M 30,265 Q 350,115 670,265"
+        stroke="rgba(0,0,0,0.26)" stroke-width="120" stroke-linecap="round" fill="none"/>
+  <!-- Monochrome arc -->
+  <path d="M 30,262 Q 350,112 670,262"
+        stroke="url(#rg)" stroke-width="110" stroke-linecap="round" fill="none"
+        filter="url(#arc-sh)"/>
+  <!-- Highlight shimmer along top edge -->
+  <path d="M 70,250 Q 350,106 630,250"
+        stroke="rgba(255,255,255,0.15)" stroke-width="28" stroke-linecap="round" fill="none"/>
+
+  <!-- ── Paint splatters — left end ── -->
+  <ellipse cx="52"  cy="322" rx="10" ry="6"  fill="#ffffff" opacity="0.88" transform="rotate(-25,52,322)"/>
+  <ellipse cx="88"  cy="330" rx="7"  ry="4"  fill="#cccccc" opacity="0.82" transform="rotate(14,88,330)"/>
+  <ellipse cx="33"  cy="306" rx="5"  ry="8"  fill="#e0e0e0" opacity="0.86" transform="rotate(48,33,306)"/>
+  <circle  cx="118" cy="320" r="4.5"         fill="#ffffff" opacity="0.68"/>
+  <circle  cx="30"  cy="286" r="3"           fill="#cccccc" opacity="0.60"/>
+
+  <!-- ── Paint splatters — right end ── -->
+  <ellipse cx="648" cy="322" rx="10" ry="6"  fill="#ffffff" opacity="0.88" transform="rotate(25,648,322)"/>
+  <ellipse cx="618" cy="330" rx="7"  ry="4"  fill="#cccccc" opacity="0.82" transform="rotate(-14,618,330)"/>
+  <ellipse cx="667" cy="306" rx="5"  ry="8"  fill="#e0e0e0" opacity="0.86" transform="rotate(-48,667,306)"/>
+  <circle  cx="590" cy="320" r="4.5"         fill="#ffffff" opacity="0.68"/>
+  <circle  cx="670" cy="285" r="3"           fill="#cccccc" opacity="0.60"/>
+
+  <!-- ── Paint splatters — upper (near brush) ── -->
+  <ellipse cx="548" cy="110" rx="7"  ry="4"  fill="#e0e0e0" opacity="0.85" transform="rotate(32,548,110)"/>
+  <ellipse cx="578" cy="94"  rx="5"  ry="3"  fill="#ffffff" opacity="0.80" transform="rotate(-18,578,94)"/>
+  <ellipse cx="515" cy="104" rx="4"  ry="6"  fill="#cccccc" opacity="0.84" transform="rotate(24,515,104)"/>
+  <circle  cx="562" cy="80"  r="4"           fill="#e0e0e0" opacity="0.76"/>
+  <circle  cx="597" cy="108" r="3"           fill="#ffffff" opacity="0.68"/>
+
+  <!-- ── Text ── -->
+  <text
+    x="350" y="213"
+    text-anchor="middle"
+    font-family="'Arial Black', Impact, 'Helvetica Neue', Arial, sans-serif"
+    font-size="68"
+    font-weight="900"
+    letter-spacing="-1"
+    fill="#f8f0e0"
+    stroke="#111111"
+    stroke-width="9"
+    paint-order="stroke fill"
+  >PromptPaint</text>
+
+  <!-- ── Paintbrush — ferrule at (490,128), rotated 42° (handle upper-right, bristles lower-left) ── -->
+  <g transform="translate(490,128) rotate(42)" filter="url(#br-sh)">
+    <!-- Wooden handle -->
+    <rect x="-11" y="-160" width="22" height="148" rx="5" fill="url(#wood)"/>
+    <!-- Highlight stripe on handle -->
+    <rect x="-3"  y="-157" width="4"  height="142" rx="2" fill="rgba(255,255,255,0.13)"/>
+    <!-- Handle end cap -->
+    <ellipse cx="0" cy="-160" rx="11" ry="9" fill="#111111"/>
+    <!-- Hanging hole -->
+    <circle  cx="0" cy="-155" r="3.5"        fill="#050505"/>
+
+    <!-- Metal ferrule -->
+    <rect x="-13" y="-14" width="26" height="24" rx="2" fill="url(#metal)"/>
+    <line x1="-13" y1="-7" x2="13" y2="-7" stroke="rgba(255,255,255,0.35)" stroke-width="1"/>
+    <line x1="-13" y1="-1" x2="13" y2="-1" stroke="rgba(255,255,255,0.22)" stroke-width="0.8"/>
+    <line x1="-13" y1="5"  x2="13" y2="5"  stroke="rgba(0,0,0,0.30)"       stroke-width="0.8"/>
+
+    <!-- Bristles — desaturated -->
+    <path d="M -13,10 C -15,22 -33,42 -36,64 L 36,64 C 33,42 15,22 13,10 Z" fill="#888888"/>
+    <!-- Bristle texture lines -->
+    <line x1="-11" y1="10" x2="-32" y2="64" stroke="#555555" stroke-width="1.2" opacity="0.50"/>
+    <line x1="-7"  y1="10" x2="-21" y2="64" stroke="#555555" stroke-width="1.2" opacity="0.50"/>
+    <line x1="-3"  y1="10" x2="-8"  y2="64" stroke="#555555" stroke-width="1.2" opacity="0.50"/>
+    <line x1="0"   y1="10" x2="0"   y2="64" stroke="#555555" stroke-width="1.2" opacity="0.50"/>
+    <line x1="3"   y1="10" x2="8"   y2="64" stroke="#555555" stroke-width="1.2" opacity="0.50"/>
+    <line x1="7"   y1="10" x2="21"  y2="64" stroke="#555555" stroke-width="1.2" opacity="0.50"/>
+    <line x1="11"  y1="10" x2="32"  y2="64" stroke="#555555" stroke-width="1.2" opacity="0.50"/>
+    <!-- Paint-loaded bristle tips — white/gray -->
+    <path d="M -36,55 Q -18,62 0,59 Q 18,56 36,55 L 36,64 Q 18,70 0,67 Q -18,70 -36,64 Z"
+          fill="#e0e0e0" opacity="0.92"/>
+    <path d="M -36,55 Q -29,59 -20,57 L -20,64 Q -29,66 -36,64 Z" fill="#cccccc" opacity="0.88"/>
+    <path d="M 20,57  Q 29,59  36,55 L 36,64 Q 29,66  20,64 Z"    fill="#f0f0f0" opacity="0.85"/>
+    <path d="M -10,57 Q -5,60  0,59  L 0,66  Q -5,67 -10,65 Z"    fill="#d8d8d8" opacity="0.78"/>
+  </g>
+</svg>

@@ -5,26 +5,50 @@
 }
 
 :root {
-  --bg:           #0f0f14;
-  --surface:      #1a1a24;
-  --surface2:     #22223a;
-  --border:       #2a2a3a;
-  --accent:       #7c6af7;
-  --accent-hover: #9585f9;
-  --accent-dim:   rgba(124, 106, 247, 0.15);
-  --danger:       #e05c5c;
-  --text:         #e8e8f0;
-  --text-muted:   #6b6b80;
+  --bg:           #030912;
+  --surface:      #08121e;
+  --surface2:     #102030;
+  --border:       #1e3245;
+  --accent:       #3b82f6;
+  --accent-hover: #60a5fa;
+  --accent-dim:   rgba(59, 130, 246, 0.12);
+  --danger:       #f87171;
+  --text:         #f9fafb;
+  --text-muted:   #cbd5e1;
   --radius:       8px;
 
   /* Responsive layout tokens */
   --sidebar-w:  300px;
-  --header-h:   88px;
+  --header-h:   108px;
   --canvas-size: clamp(
     360px,
     min(calc(100vh - var(--header-h) - 5rem), calc(100vw - var(--sidebar-w) - 5rem)),
     730px
   );
+}
+
+/* ── Light mode overrides ───────────────────────────────────── */
+
+.app.light {
+  --bg:           #e8edf3;
+  --surface:      #f1f5f9;
+  --surface2:     #dde3ec;
+  --border:       #c8d1dd;
+  --accent:       #1d4ed8;
+  --accent-hover: #1e40af;
+  --accent-dim:   rgba(29, 78, 216, 0.10);
+  --danger:       #ef4444;
+  --text:         #0f172a;
+  --text-muted:   #475569;
+}
+
+.app.light .uoft-logo {
+  filter: none;
+  opacity: 0.85;
+}
+
+.app.light .about-overlay {
+  background: rgba(248, 250, 252, 0.85);
 }
 
 body {
@@ -61,16 +85,32 @@ body {
 }
 
 .logo {
-  font-size: 1.75rem;
+  font-size: 2.5rem;
   font-weight: 700;
   letter-spacing: -0.5px;
   line-height: 1.5;
-  color: var(--accent);
+  color: var(--text);
   margin: 0;
+  position: relative;
+  z-index: 1;
 }
 
 .logo-clickable {
   cursor: pointer;
+}
+
+.logo-container {
+  position: relative;
+  display: inline-block;
+}
+
+.logo-brush-deco {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
 }
 
 .logo-subtitle {
@@ -87,7 +127,7 @@ body {
 }
 
 .uoft-logo {
-  height: 48px;
+  height: 56px;
   width: auto;
   opacity: 0.9;
   filter: brightness(0) invert(1);
@@ -362,6 +402,14 @@ body {
 .btn-generate:hover:not(:disabled) { background: var(--accent-hover); }
 .btn-generate:disabled { opacity: 0.5; cursor: not-allowed; }
 
+.generate-notice {
+  margin: 0;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-align: center;
+  opacity: 0.7;
+}
+
 .btn-cancel {
   padding: 9px 14px;
   background: transparent;
@@ -536,6 +584,9 @@ body {
   white-space: nowrap;
   pointer-events: none;
 }
+.app.light .canvas-area-footer {
+  opacity: 0.85;
+}
 
 .canvas-outer {
   position: relative;
@@ -668,7 +719,7 @@ body {
 .about-overlay {
   position: absolute;
   inset: 0;
-  background: rgba(10, 10, 18, 0.75);
+  background: rgba(10, 14, 23, 0.85);
   display: flex;
   align-items: stretch;
   justify-content: center;
@@ -735,32 +786,32 @@ body {
 @media (max-width: 1280px) {
   :root {
     --sidebar-w: 270px;
-    --header-h:  84px;
+    --header-h:  100px;
   }
   .app-header { padding: 1rem 1.75rem; }
-  .uoft-logo  { height: 42px; }
+  .uoft-logo  { height: 56px; }
 }
 
 @media (max-width: 1100px) {
   :root {
     --sidebar-w: 245px;
-    --header-h:  78px;
+    --header-h:  88px;
   }
   .app-header    { padding: 0.85rem 1.5rem; }
-  .logo          { font-size: 1.5rem; }
+  .logo          { font-size: 2rem; }
   .logo-subtitle { font-size: 0.85rem; }
-  .uoft-logo     { height: 38px; }
+  .uoft-logo     { height: 50px; }
 }
 
 @media (max-width: 900px) {
   :root {
     --sidebar-w: 220px;
-    --header-h:  70px;
+    --header-h:  76px;
   }
   .app-header    { padding: 0.7rem 1.25rem; }
-  .logo          { font-size: 1.3rem; }
+  .logo          { font-size: 1.6rem; }
   .logo-subtitle { display: none; }
-  .uoft-logo     { height: 32px; }
+  .uoft-logo     { height: 42px; }
   .mode-tab      { font-size: 10px; padding: 5px 2px; }
   .canvas-welcome { font-size: 16px; }
 }

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import Sidebar from './components/Sidebar';
 import Canvas from './components/Canvas';
@@ -38,9 +39,15 @@ export default function App() {
   const [statusMsg,   setStatusMsg]   = useState('');
   const [menuOpen,    setMenuOpen]    = useState(false);
   const [queuePos,    setQueuePos]    = useState(null);
-  const [showAbout,   setShowAbout]   = useState(false);
-  const [showContact, setShowContact] = useState(false);
-  const menuRef = useRef(null);
+  const [theme, setTheme] = useState(() => localStorage.getItem('pp-theme') || 'dark');
+  const menuRef  = useRef(null);
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const showAbout   = location.pathname === '/about';
+  const showContact = location.pathname === '/contacts';
+
+  const switchTheme = (t) => { setTheme(t); localStorage.setItem('pp-theme', t); setMenuOpen(false); };
 
   // Close menu on outside click
   useEffect(() => {
@@ -155,11 +162,48 @@ export default function App() {
   // Render
   // ---------------------------------------------------------------------------
   return (
-    <div className="app">
+    <div className={`app ${theme}`}>
       <header className="app-header">
         <div className="header-title">
-          <h1 className="logo logo-clickable" onClick={() => { setShowAbout(false); setShowContact(false); }}>PromptPaint</h1>
-          <p className="logo-subtitle">Generate art like you are painting</p>
+          <div className="logo-container logo-clickable" onClick={() => navigate('/')}>
+            <h1 className="logo">PromptPaint</h1>
+            <svg className="logo-brush-deco" viewBox="0 0 360 66" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <defs>
+                <linearGradient id="hdr-grad" x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0%"   stopColor="#e91e8c"/>
+                  <stop offset="20%"  stopColor="#ff5722"/>
+                  <stop offset="42%"  stopColor="#ffc107"/>
+                  <stop offset="62%"  stopColor="#4caf50"/>
+                  <stop offset="82%"  stopColor="#00bcd4"/>
+                  <stop offset="100%" stopColor="#2196f3"/>
+                </linearGradient>
+              </defs>
+              {/* shadow undercoat */}
+              <path d="M 4,44 Q 90,30 180,36 Q 270,42 318,28" stroke="rgba(0,0,0,0.3)" strokeWidth="38" strokeLinecap="round" fill="none"/>
+              {/* rainbow stroke */}
+              <path d="M 4,42 Q 90,28 180,34 Q 270,40 318,26" stroke="url(#hdr-grad)" strokeWidth="34" strokeLinecap="round" fill="none" opacity="0.75"/>
+              {/* shimmer */}
+              <path d="M 8,32 Q 90,19 180,25 Q 270,31 314,17" stroke="rgba(255,255,255,0.2)" strokeWidth="9" strokeLinecap="round" fill="none"/>
+              {/* paintbrush at right end, handle upper-right bristles lower-left */}
+              <g transform="translate(318,26) rotate(38)">
+                <rect x="-5" y="-44" width="10" height="34" rx="3" fill="#7a4520"/>
+                <rect x="-1.5" y="-42" width="2" height="30" rx="1" fill="rgba(255,255,255,0.15)"/>
+                <ellipse cx="0" cy="-44" rx="5" ry="4" fill="#1e0a02"/>
+                <rect x="-6" y="-12" width="12" height="11" rx="1" fill="#aaaaaa"/>
+                <line x1="-6" y1="-8" x2="6" y2="-8" stroke="rgba(255,255,255,0.4)" strokeWidth="0.8"/>
+                <path d="M -6,0 C -7,8 -16,18 -17,30 L 17,30 C 16,18 7,8 6,0 Z" fill="#c4924a"/>
+                <line x1="-5" y1="0" x2="-15" y2="30" stroke="#8b6020" strokeWidth="0.8" opacity="0.5"/>
+                <line x1="-2" y1="0" x2="-8"  y2="30" stroke="#8b6020" strokeWidth="0.8" opacity="0.5"/>
+                <line x1="0"  y1="0" x2="0"   y2="30" stroke="#8b6020" strokeWidth="0.8" opacity="0.5"/>
+                <line x1="2"  y1="0" x2="8"   y2="30" stroke="#8b6020" strokeWidth="0.8" opacity="0.5"/>
+                <line x1="5"  y1="0" x2="15"  y2="30" stroke="#8b6020" strokeWidth="0.8" opacity="0.5"/>
+                <path d="M -17,25 Q 0,29 17,25 L 17,30 Q 0,34 -17,30 Z" fill="#2196f3" opacity="0.9"/>
+                <path d="M -17,25 Q -12,27 -8,26 L -8,30 Q -12,31 -17,30 Z" fill="#4caf50" opacity="0.85"/>
+                <path d="M 8,26 Q 12,27 17,25 L 17,30 Q 12,31 8,30 Z" fill="#ffc107" opacity="0.85"/>
+              </g>
+            </svg>
+          </div>
+          <p className="logo-subtitle">Prompt Like a Painter</p>
         </div>
         <div className="header-right">
           <img src={uoftLogoDataUri} alt="University of Toronto" className="uoft-logo" />
@@ -167,8 +211,8 @@ export default function App() {
       </header>
 
       <main className="app-body">
-        {showAbout   && <About   onClose={() => setShowAbout(false)} />}
-        {showContact && <Contact onClose={() => setShowContact(false)} />}
+        {showAbout   && <About   onClose={() => navigate('/')} />}
+        {showContact && <Contact onClose={() => navigate('/')} />}
         <Sidebar
           mode={mode}               onModeChange={handleModeChange}
           params={params}           onParamsChange={setParams}
@@ -193,26 +237,26 @@ export default function App() {
             {menuOpen && (
               <div className="canvas-dropdown">
                 <div className="canvas-menu-label">Theme</div>
-                <button className="canvas-menu-item">
+                <button className={`canvas-menu-item ${theme === 'light' ? 'active' : ''}`} onClick={() => switchTheme('light')}>
                   <svg className="canvas-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
                     <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
                   </svg>
                   Light
                 </button>
-                <button className="canvas-menu-item active">
+                <button className={`canvas-menu-item ${theme === 'dark' ? 'active' : ''}`} onClick={() => switchTheme('dark')}>
                   <svg className="canvas-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
                   </svg>
                   Dark
                 </button>
                 <div className="canvas-menu-label">More</div>
-                <button className="canvas-menu-item" onClick={() => { setShowAbout(true); setMenuOpen(false); }}>
+                <button className="canvas-menu-item" onClick={() => { navigate('/about'); setMenuOpen(false); }}>
                   <svg className="canvas-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
                     <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
                   </svg>
                   About
                 </button>
-                <button className="canvas-menu-item" onClick={() => { setShowContact(true); setMenuOpen(false); }}>
+                <button className="canvas-menu-item" onClick={() => { navigate('/contacts'); setMenuOpen(false); }}>
                   <svg className="canvas-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>
                   </svg>
@@ -229,7 +273,7 @@ export default function App() {
             onStrokesChange={setStrokes}
           />
           <p className="canvas-area-footer">
-            This page is an implementation of the PromptPaint paper. More in About
+            Based on PromptPaint by John Joon Young Chung &amp; Eytan Adar, University of Michigan
           </p>
         </section>
       </main>
