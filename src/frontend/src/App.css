@@ -215,6 +215,7 @@ body {
 .sidebar-bottom {
   flex-shrink: 0;
   padding: 12px;
+  padding-top: 20px;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -826,9 +827,11 @@ body {
 /* ── Prompt Makeup ─────────────────────────────────────────── */
 
 .prompt-makeup {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 5px;
+  max-height: calc(3 * 18px + 2 * 5px);
+  overflow-y: auto;
 }
 
 .prompt-makeup-row {

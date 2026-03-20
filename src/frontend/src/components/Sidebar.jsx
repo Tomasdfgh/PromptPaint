@@ -96,10 +96,6 @@ export default function Sidebar({
           <PromptPalette prompts={prompts} onWeightsChange={handlePaletteWeights} />
         )}
 
-        {mode === 'standard' && (
-          <PromptCompositionPanel prompts={prompts} weights={paletteWeights} />
-        )}
-
         {mode === 'directional' && (
           <DirectionalPanel params={params} set={set} />
         )}
@@ -125,6 +121,10 @@ export default function Sidebar({
 
       {/* Bottom: generation settings + progress + actions */}
       <div className="sidebar-bottom">
+
+        {mode === 'standard' && (
+          <PromptCompositionPanel prompts={prompts} weights={paletteWeights} />
+        )}
 
         {/* Generate area: hover reveals settings above the button */}
         <div className="generate-area">
@@ -505,6 +505,10 @@ function PromptPalette({ prompts, onWeightsChange }) {
       x: Math.min(Math.max(DOT_R, p.x), VW - DOT_R),
       y: Math.min(Math.max(DOT_R, p.y), maxY),
     })));
+    setCursorPos(prev => ({
+      x: Math.min(Math.max(0, prev.x), VW),
+      y: Math.min(Math.max(0, prev.y), VH * heightScale),
+    }));
   }, [heightScale]);
 
   const toSVGCoords = useCallback((clientX, clientY) => {
@@ -520,10 +524,12 @@ function PromptPalette({ prompts, onWeightsChange }) {
   fixedRef.current = fixed;
   const selectedDotRef = useRef(selectedDot);
   selectedDotRef.current = selectedDot;
+  const mousedownPosRef = useRef(null);
   const didDragRef = useRef(false);
 
   const handleDotMouseDown = useCallback((index, e) => {
     if (fixedRef.current) return;
+    mousedownPosRef.current = { x: e.clientX, y: e.clientY };
     // When another dot is selected, don't start dragging — let the click handle the connect
     if (selectedDotRef.current !== null && selectedDotRef.current !== index) return;
     e.preventDefault();
@@ -547,6 +553,12 @@ function PromptPalette({ prompts, onWeightsChange }) {
 
     const onUp = () => {
       dotDragRef.current = null;
+      if (didDragRef.current) {
+        didDragRef.current = false;
+        setSelectedDot(null);
+        setMousePos(null);
+      }
+      mousedownPosRef.current = null;
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
     };
@@ -712,6 +724,8 @@ function PromptPalette({ prompts, onWeightsChange }) {
       onMouseLeave={() => setHoveredDot(null)}
       onClick={(e) => {
         e.stopPropagation();
+        const md = mousedownPosRef.current;
+        if (md && Math.hypot(e.clientX - md.x, e.clientY - md.y) > 4) return;
         if (fixed) return;
         if (selectedDot !== null && selectedDot !== i) {
           const existingIdx = links.findIndex(l => (l.a === selectedDot && l.b === i) || (l.a === i && l.b === selectedDot));
@@ -758,7 +772,11 @@ function PromptPalette({ prompts, onWeightsChange }) {
         viewBox={`0 0 ${VW} ${viewHeight}`}
         className="prompt-palette-svg"
         style={{ userSelect: 'none', overflow: 'visible' }}
-        onClick={() => { if (!fixed) setSelectedDot(null); }}
+        onClick={(e) => {
+          const md = mousedownPosRef.current;
+          if (md && Math.hypot(e.clientX - md.x, e.clientY - md.y) > 4) return;
+          if (!fixed) setSelectedDot(null);
+        }}
         onMouseMove={(e) => {
           if (fixed || selectedDot === null) return;
           setMousePos(toSVGCoords(e.clientX, e.clientY));
@@ -948,9 +966,12 @@ function PromptCompositionPanel({ prompts, weights }) {
         <div className="prompt-makeup">
           {prompts.map((p, i) => {
             const pct = Math.round((weights[i] ?? 0) * 100);
+            if (pct === 0) return null;
             return (
               <div key={i} className="prompt-makeup-row">
-                <div className="prompt-makeup-dot" style={{ background: p.color }} />
+                <div className="prompt-color-dot" style={{ background: p.color }}>
+                  <span className="prompt-color-dot-num">{i + 1}</span>
+                </div>
                 <div className="prompt-makeup-bar-track">
                   <div className="prompt-makeup-bar-fill" style={{ width: `${pct}%`, background: p.color }} />
                 </div>
