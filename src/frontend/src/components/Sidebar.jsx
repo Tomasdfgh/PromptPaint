@@ -59,9 +59,8 @@ export default function Sidebar({
     ? params.prompts
     : [{ text: '', color: promptHue(0), weight: 1 }, { text: '', color: promptHue(1), weight: 1 }];
 
-  const isMixingMode = mode === 'standard' && prompts.length > 1;
   const hasSelection = paletteWeights.some(w => w > 0.001);
-  const needsSelection = isMixingMode && !hasSelection;
+  const needsSelection = mode === 'standard' && !hasSelection;
 
   const handleGenerateWithLog = () => {
     const hasSelection = paletteWeights.some(w => w > 0.001);
@@ -96,8 +95,8 @@ export default function Sidebar({
           <PromptPalette prompts={prompts} onWeightsChange={handlePaletteWeights} />
         )}
 
-        {mode === 'directional' && (
-          <DirectionalPanel params={params} set={set} />
+        {mode === 'standard' && (
+          <DirectionalPromptsPanel params={params} set={set} />
         )}
 
         {mode === 'stencil' && (
@@ -877,8 +876,6 @@ function PromptPalette({ prompts, onWeightsChange }) {
           return (
             <g key={idx} style={{ pointerEvents: 'none' }}>
               <line x1={posA.x} y1={posA.y} x2={posB.x} y2={posB.y}
-                stroke="#000" strokeWidth={DOT_R * 2 + 1.5} strokeLinecap="butt" />
-              <line x1={posA.x} y1={posA.y} x2={posB.x} y2={posB.y}
                 stroke={`url(#link-grad-${idx})`} strokeWidth={DOT_R * 2} strokeLinecap="butt" />
             </g>
           );
@@ -1074,45 +1071,75 @@ function PromptCompositionPanel({ prompts, weights }) {
   );
 }
 
-function DirectionalPanel({ params, set }) {
+function DirectionalPromptsPanel({ params, set }) {
+  const dirPrompts = params.directional_prompts?.length > 0
+    ? params.directional_prompts
+    : [{ from: '', to: '', scale: 1 }];
+
+  const update = (i, field, val) =>
+    set('directional_prompts', dirPrompts.map((d, idx) => idx === i ? { ...d, [field]: val } : d));
+
+  const add = () =>
+    set('directional_prompts', [...dirPrompts, { from: '', to: '', scale: 1 }]);
+
+  const remove = (i) =>
+    set('directional_prompts', dirPrompts.filter((_, idx) => idx !== i));
+
+  const multi = dirPrompts.length > 1;
+
   return (
-    <section className="panel">
-      <label className="field-label">Base prompt</label>
-      <textarea
-        className="prompt-input"
-        rows={3}
-        placeholder="e.g. a red sphere"
-        value={params.prompt || ''}
-        onChange={e => set('prompt', e.target.value)}
-      />
+    <section className="panel prompt-list-panel">
+      <div className="prompt-list-header">
+        <label className="field-label">Directional Prompts</label>
+        {dirPrompts.length < 3
+          ? <button className="btn-add-prompt" onClick={add}>+ Add Prompt</button>
+          : <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>limit reached</span>
+        }
+      </div>
 
-      <label className="field-label" style={{ marginTop: 10 }}>From concept</label>
-      <input
-        className="text-input"
-        placeholder="e.g. matte"
-        value={params.from_concept || ''}
-        onChange={e => set('from_concept', e.target.value)}
-      />
-
-      <label className="field-label" style={{ marginTop: 10 }}>To concept</label>
-      <input
-        className="text-input"
-        placeholder="e.g. glossy"
-        value={params.to_concept || ''}
-        onChange={e => set('to_concept', e.target.value)}
-      />
-
-      <div className="slider-row" style={{ marginTop: 14 }}>
-        <label className="field-label">
-          Scale — <span className="slider-value">{(params.scale || 1).toFixed(1)}×</span>
-        </label>
-        <input
-          type="range" min={0} max={3} step={0.1}
-          value={params.scale || 1}
-          onChange={e => set('scale', parseFloat(e.target.value))}
-          className="slider"
-          style={sliderBg(params.scale || 1, 0, 3)}
-        />
+      <div className="prompt-list directional-list">
+        {dirPrompts.map((d, i) => (
+          <div key={i} style={{ marginBottom: multi ? 8 : 0 }}>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <input
+                className="text-input"
+                placeholder="From…"
+                value={d.from}
+                onChange={e => { if (e.target.value.length <= 30) update(i, 'from', e.target.value); }}
+                style={{ flex: 1, fontSize: 11, padding: '3px 6px' }}
+              />
+              <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>→</span>
+              <input
+                className="text-input"
+                placeholder="To…"
+                value={d.to}
+                onChange={e => { if (e.target.value.length <= 30) update(i, 'to', e.target.value); }}
+                style={{ flex: 1, fontSize: 11, padding: '3px 6px' }}
+              />
+              {multi && (
+                <button
+                  onClick={() => remove(i)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 12, padding: '0 2px', lineHeight: 1 }}
+                >✕</button>
+              )}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+              <input
+                type="range" min={-3} max={3} step={0.1}
+                value={d.scale}
+                onChange={e => update(i, 'scale', parseFloat(e.target.value))}
+                className="slider"
+                style={{ ...sliderBg(d.scale, -3, 3), flex: 1 }}
+              />
+              <span className="slider-value" style={{ whiteSpace: 'nowrap', fontSize: 11, width: 72, textAlign: 'right', flexShrink: 0 }}>
+                {d.scale === 0
+                  ? 'no shift'
+                  : `→ ${d.scale < 0 ? 'From' : 'To'} ${Math.abs(d.scale).toFixed(1)}×`
+                }
+              </span>
+            </div>
+          </div>
+        ))}
       </div>
     </section>
   );

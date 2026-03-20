@@ -250,7 +250,7 @@ export default function App() {
 
           {/* Mode tabs — top-left of canvas area */}
           <div className="canvas-mode-tabs">
-            {['standard', 'directional', 'stencil', 'intervention'].map(m => (
+            {['standard', 'stencil', 'intervention'].map(m => (
               <button
                 key={m}
                 className={`mode-tab ${mode === m ? 'active' : ''}`}

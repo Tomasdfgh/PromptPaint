@@ -50,7 +50,7 @@ export default function About({ onClose }) {
             <section className="about-article-section">
               <h3>Features</h3>
               <p>
-                The application implements five generation modes, each corresponding to a
+                The application implements four generation modes, each corresponding to a
                 different way of interacting with the model&apos;s prompt embedding space.
               </p>
               <table className="about-feature-table">
@@ -61,14 +61,6 @@ export default function About({ onClose }) {
                   </tr>
                 </thead>
                 <tbody>
-                  <tr>
-                    <td>Standard</td>
-                    <td>
-                      Classic text-to-image generation. Enter a prompt and generate a 1024×1024
-                      image. Adjust diffusion steps and guidance scale to trade off speed, detail,
-                      and prompt adherence.
-                    </td>
-                  </tr>
                   <tr>
                     <td>Mixing</td>
                     <td>
