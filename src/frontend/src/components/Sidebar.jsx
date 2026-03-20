@@ -520,25 +520,21 @@ function PromptPalette({ prompts, onWeightsChange }) {
   fixedRef.current = fixed;
   const selectedDotRef = useRef(selectedDot);
   selectedDotRef.current = selectedDot;
-  const dragMovedRef = useRef(false);
+  const didDragRef = useRef(false);
 
   const handleDotMouseDown = useCallback((index, e) => {
     if (fixedRef.current) return;
+    // When another dot is selected, don't start dragging — let the click handle the connect
     if (selectedDotRef.current !== null && selectedDotRef.current !== index) return;
     e.preventDefault();
-    dragMovedRef.current = false;
     dotDragRef.current = index;
-    setTopDot(index);
     const startX = e.clientX, startY = e.clientY;
 
     const onMove = (me) => {
       if (dotDragRef.current === null) return;
-      // Only count as a drag after moving more than 4px to avoid swallowing clicks
-      if (!dragMovedRef.current) {
-        const dx = me.clientX - startX, dy = me.clientY - startY;
-        if (Math.sqrt(dx * dx + dy * dy) < 4) return;
-        dragMovedRef.current = true;
-      }
+      const dx = me.clientX - startX, dy = me.clientY - startY;
+      if (Math.sqrt(dx * dx + dy * dy) < 4) return;
+      if (!didDragRef.current) { didDragRef.current = true; setTopDot(index); }
       const { x, y } = toSVGCoords(me.clientX, me.clientY);
       const maxY = VH * heightScaleRef.current - DOT_R;
       setPositions(prev => prev.map((p, i) =>
@@ -714,7 +710,7 @@ function PromptPalette({ prompts, onWeightsChange }) {
       onMouseDown={(e) => handleDotMouseDown(i, e)}
       onMouseEnter={() => !fixed && setHoveredDot(i)}
       onMouseLeave={() => setHoveredDot(null)}
-      onDoubleClick={(e) => {
+      onClick={(e) => {
         e.stopPropagation();
         if (fixed) return;
         if (selectedDot !== null && selectedDot !== i) {
@@ -762,7 +758,7 @@ function PromptPalette({ prompts, onWeightsChange }) {
         viewBox={`0 0 ${VW} ${viewHeight}`}
         className="prompt-palette-svg"
         style={{ userSelect: 'none', overflow: 'visible' }}
-        onClick={() => !fixed && setSelectedDot(null)}
+        onClick={() => { if (!fixed) setSelectedDot(null); }}
         onMouseMove={(e) => {
           if (fixed || selectedDot === null) return;
           setMousePos(toSVGCoords(e.clientX, e.clientY));
