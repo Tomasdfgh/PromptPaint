@@ -775,8 +775,102 @@ body {
   justify-content: space-between;
   margin-bottom: 6px;
 }
+.palette-label-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
 .prompt-palette-header .field-label {
   margin-bottom: 0;
+}
+.palette-info-btn {
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.6;
+  transition: opacity 0.15s;
+}
+.palette-info-btn:hover { opacity: 1; }
+.palette-info-btn svg { width: 13px; height: 13px; }
+
+/* ── Palette Tutorial ───────────────────────────────────────── */
+.palette-tutorial-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.palette-tutorial {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px;
+  width: 300px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+}
+.palette-tutorial-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.palette-tutorial-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.palette-tutorial-close {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0;
+  line-height: 1;
+}
+.palette-tutorial-close:hover { color: var(--text); }
+.palette-tutorial-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.palette-tutorial-step {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.palette-tutorial-icon {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.palette-tutorial-icon svg { width: 20px; height: 20px; }
+.palette-tutorial-step-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+.palette-tutorial-step-desc {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  line-height: 1.5;
 }
 .palette-fix-toggle {
   display: flex;
@@ -832,7 +926,13 @@ body {
   gap: 5px;
   max-height: calc(3 * 18px + 2 * 5px);
   overflow-y: auto;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
 }
+.prompt-makeup::-webkit-scrollbar { width: 2px; }
+.prompt-makeup::-webkit-scrollbar-track { background: transparent; }
+.prompt-makeup::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
 .prompt-makeup-row {
   display: flex;

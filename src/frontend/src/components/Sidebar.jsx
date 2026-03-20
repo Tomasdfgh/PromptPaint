@@ -479,6 +479,7 @@ function PromptPalette({ prompts, onWeightsChange }) {
     prompts.map((_, i) => defaultPalettePos(i, prompts.length))
   );
   const [fixed, setFixed] = useState(false);
+  const [showTutorial, setShowTutorial] = useState(false);
   const [hoveredDot, setHoveredDot] = useState(null);
   const [selectedDot, setSelectedDot] = useState(null);
   const [mousePos, setMousePos] = useState(null);
@@ -760,8 +761,18 @@ function PromptPalette({ prompts, onWeightsChange }) {
 
   return (
     <section className="panel prompt-palette-panel" ref={panelRef}>
+      {showTutorial && <PaletteTutorial onClose={() => setShowTutorial(false)} />}
       <div className="prompt-palette-header">
-        <label className="field-label">Prompt Palette</label>
+        <div className="palette-label-row">
+          <label className="field-label">Prompt Palette</label>
+          <button className="palette-info-btn" onClick={() => setShowTutorial(true)} aria-label="How to use the palette">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="8" cy="8" r="7"/>
+              <line x1="8" y1="7" x2="8" y2="11"/>
+              <circle cx="8" cy="4.5" r="0.5" fill="currentColor" stroke="none"/>
+            </svg>
+          </button>
+        </div>
         <div className="palette-fix-toggle">
           <button className={`palette-fix-btn${fixed ? ' active' : ''}`} onClick={() => { setFixed(true); setSelectedDot(null); setHoveredDot(null); setMousePos(null); }}>Fixed</button>
           <button className={`palette-fix-btn${!fixed ? ' active' : ''}`} onClick={() => { setFixed(false); setSelectedDot(null); setHoveredDot(null); setMousePos(null); }}>Edit</button>
@@ -946,6 +957,18 @@ function PromptPalette({ prompts, onWeightsChange }) {
           onClick={e => e.stopPropagation()}
           style={{ cursor: 'crosshair' }}
         >
+          {weights.every(w => w < 0.001) && (
+            <text
+              y={-16}
+              textAnchor="middle"
+              fill="var(--text-muted)"
+              fontSize="8"
+              fontWeight="600"
+              style={{ pointerEvents: 'none', userSelect: 'none' }}
+            >
+              Nothing Selected
+            </text>
+          )}
           <circle r={9} fill="white" fillOpacity="0.92" stroke="#111" strokeWidth="2" />
           <line x1={-5} y1={0} x2={5} y2={0} stroke="#111" strokeWidth="1.5" strokeLinecap="round" />
           <line x1={0} y1={-5} x2={0} y2={5} stroke="#111" strokeWidth="1.5" strokeLinecap="round" />
@@ -957,8 +980,72 @@ function PromptPalette({ prompts, onWeightsChange }) {
   );
 }
 
+function PaletteTutorial({ onClose }) {
+  const steps = [
+    {
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+      ),
+      title: 'Edit vs Fixed',
+      desc: 'Switch to Edit mode to arrange dots and draw connections. Use Fixed mode when you\'re happy with the layout.',
+    },
+    {
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="6" cy="18" r="3"/><circle cx="18" cy="6" r="3"/><line x1="8.5" y1="15.5" x2="15.5" y2="8.5"/>
+        </svg>
+      ),
+      title: 'Connect Prompts',
+      desc: 'In Edit mode, click a dot to select it (green ring), then click another dot to draw a connection between them. Click the connection to remove it.',
+    },
+    {
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/>
+        </svg>
+      ),
+      title: 'Set the Mix',
+      desc: 'Drag the white crosshair onto a dot for 100% of that prompt, onto a connection to blend two, or inside a triangle to mix three or more.',
+    },
+    {
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/>
+        </svg>
+      ),
+      title: 'Prompt Composition',
+      desc: 'The panel below the palette shows the percentage of each prompt in your current mix. Only prompts contributing to the mix are shown.',
+    },
+  ];
+
+  return (
+    <div className="palette-tutorial-overlay" onClick={onClose}>
+      <div className="palette-tutorial" onClick={e => e.stopPropagation()}>
+        <div className="palette-tutorial-header">
+          <span className="palette-tutorial-title">How to use the Palette</span>
+          <button className="palette-tutorial-close" onClick={onClose}>✕</button>
+        </div>
+        <div className="palette-tutorial-steps">
+          {steps.map((s, i) => (
+            <div key={i} className="palette-tutorial-step">
+              <div className="palette-tutorial-icon">{s.icon}</div>
+              <div>
+                <div className="palette-tutorial-step-title">{s.title}</div>
+                <div className="palette-tutorial-step-desc">{s.desc}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PromptCompositionPanel({ prompts, weights }) {
   const hasSelection = weights.some(w => w > 0.001);
+  const visibleCount = weights.filter(w => Math.round(w * 100) > 0).length;
   return (
     <section className="panel">
       <label className="field-label">Prompt Composition</label>
@@ -968,7 +1055,7 @@ function PromptCompositionPanel({ prompts, weights }) {
             const pct = Math.round((weights[i] ?? 0) * 100);
             if (pct === 0) return null;
             return (
-              <div key={i} className="prompt-makeup-row">
+              <div key={i} className="prompt-makeup-row" style={visibleCount === 1 ? { gridColumn: '1 / -1' } : undefined}>
                 <div className="prompt-color-dot" style={{ background: p.color }}>
                   <span className="prompt-color-dot-num">{i + 1}</span>
                 </div>
