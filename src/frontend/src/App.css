@@ -282,7 +282,9 @@ body {
   margin-bottom: 8px;
   max-height: 168px;
   overflow-y: auto;
-  scrollbar-width: 2px;
+  padding: 4px 4px;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
 }
 .prompt-list::-webkit-scrollbar { width: 2px; }
@@ -347,6 +349,9 @@ body {
   position: relative;
   flex-shrink: 0;
 }
+.color-swatch-wrap:hover {
+  z-index: 10;
+}
 
 .color-swatch-popover {
   position: absolute;
@@ -401,15 +406,14 @@ body {
   cursor: pointer;
 }
 
-.prompt-remove-btn {
-  margin-top: 0;
-  flex-shrink: 0;
-}
 .btn-small.prompt-remove-btn {
-  padding: 2px 6px;
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  padding: 1px 4px;
   font-size: 9px;
-  margin-top: 3px;
-  margin-right: 4px;
+  line-height: 1;
+  z-index: 1;
 }
 
 .prompt-input-wrap {
@@ -458,7 +462,7 @@ body {
 .prompt-word-count {
   position: absolute;
   top: 3px;
-  right: 6px;
+  right: 22px;
   font-size: 9px;
   color: var(--text-muted);
   opacity: 0.6;
@@ -817,6 +821,51 @@ body {
   fill: var(--bg);
   stroke: var(--border);
   stroke-width: 1;
+}
+
+/* ── Prompt Makeup ─────────────────────────────────────────── */
+
+.prompt-makeup {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.prompt-makeup-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.prompt-makeup-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.prompt-makeup-bar-track {
+  flex: 1;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.prompt-makeup-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.08s ease;
+  opacity: 0.85;
+}
+
+.prompt-makeup-pct {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  min-width: 28px;
+  text-align: right;
+  flex-shrink: 0;
 }
 
 .palette-resize-handle {

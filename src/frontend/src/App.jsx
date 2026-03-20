@@ -41,6 +41,7 @@ export default function App() {
   const [, setStatusMsg] = useState('');
   const [menuOpen,    setMenuOpen]    = useState(false);
   const [queuePos,    setQueuePos]    = useState(null);
+  const [paletteWeights, setPaletteWeights] = useState([]);
   const [theme, setTheme] = useState(() => localStorage.getItem('pp-theme') || 'dark');
   const menuRef  = useRef(null);
   const navigate = useNavigate();
@@ -123,13 +124,24 @@ export default function App() {
     if (generating) return;
 
     const prompts = params.prompts || [];
-    // Auto-select mixing when standard mode has multiple prompts
     const effectiveMode = (mode === 'standard' && prompts.length > 1) ? 'mixing' : mode;
+
+    // In standard mixing mode, require a palette selection
+    const hasWeights = paletteWeights.length === prompts.length && paletteWeights.some(w => w > 0.001);
+    if (effectiveMode === 'mixing' && !hasWeights) {
+      console.warn('[PromptPaint] No palette selection — place the cursor on a prompt dot or mix before generating.');
+      return;
+    }
+
+    const weightedPrompts = prompts.map((p, i) => ({
+      ...p,
+      weight: hasWeights ? paletteWeights[i] : 1,
+    }));
 
     const payload = {
       ...params,
+      prompts: weightedPrompts,
       mode: effectiveMode,
-      // Standard single-prompt: pull text from prompts[0]
       prompt: mode === 'standard' ? (prompts[0]?.text || '') : params.prompt,
       strokes: mode === 'stencil' ? strokes : undefined,
     };
@@ -140,7 +152,7 @@ export default function App() {
     setImageB64(null);
     setStatusMsg('Starting…');
     socket.emit('generate', payload);
-  }, [generating, mode, params, strokes]);
+  }, [generating, mode, params, strokes, paletteWeights]);
 
   const handleIntervene = useCallback(() => {
     socket.emit('intervene', { prompt: params.intervention_prompt });
@@ -231,6 +243,7 @@ export default function App() {
           queuePos={queuePos}
           step={step}               totalSteps={totalSteps}
           brushRadius={brushRadius} onBrushRadiusChange={setBrushRadius}
+          onPaletteWeightsChange={setPaletteWeights}
         />
 
         <section className="canvas-area">
