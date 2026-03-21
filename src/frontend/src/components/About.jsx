@@ -1,3 +1,17 @@
+import { useEffect, useRef } from 'react';
+import katex from 'katex';
+import 'katex/dist/katex.min.css';
+
+function KaTeX({ math }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (ref.current) {
+      katex.render(math, ref.current, { throwOnError: false, displayMode: true });
+    }
+  }, [math]);
+  return <span ref={ref} />;
+}
+
 export default function About({ onClose }) {
   return (
     <div className="about-overlay">
@@ -58,6 +72,7 @@ export default function About({ onClose }) {
                   <tr>
                     <th>Mode</th>
                     <th>Description</th>
+                    <th>Math</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -69,23 +84,34 @@ export default function About({ onClose }) {
                       the weighted essence of all inputs simultaneously, useful for hybrid
                       concepts no single prompt can capture.
                     </td>
+                    <td className="about-math">
+                      <KaTeX math={`\\mathbf{v}_m = \\sum_{i=1}^{N} w_i \\mathbf{v}_i`} />
+                      <KaTeX math={`\\hat{\\mathbf{v}}_m = \\frac{\\mathbf{v}_m}{\\|\\mathbf{v}_m\\|} \\cdot \\bar{\\|\\mathbf{v}\\|}`} />
+                    </td>
                   </tr>
                   <tr>
                     <td>Directional</td>
                     <td>
-                      Shift a base prompt along a conceptual direction defined by a "from" and
-                      "to" concept. For example, shifting "a sphere" from "matte" toward "glossy"
-                      produces a glossy sphere without rewriting the prompt. A scale slider
-                      controls how far to push along the direction.
+                      Shift a base prompt along a conceptual axis defined by a From and To concept.
+                      The direction vector captures whatever statistically differs between the two
+                      concepts in CLIP space. A scale slider controls magnitude and direction.
+                    </td>
+                    <td className="about-math">
+                      <KaTeX math={`\\mathbf{v}_d = \\mathbf{v}_{\\text{to}} - \\mathbf{v}_{\\text{from}}`} />
+                      <KaTeX math={`\\mathbf{v}_f = \\mathbf{v}_{\\text{base}} + \\sum_{j=1}^{M} w_j \\mathbf{v}_{d_j}`} />
                     </td>
                   </tr>
                   <tr>
                     <td>Intervention</td>
                     <td>
-                      Change what the model is generating while it is actively running. Start a
-                      generation with one prompt, then inject a new prompt at any step. The model
-                      incorporates the new direction from that point onward, letting you nudge or
-                      redirect the output without restarting.
+                      Swap the guiding embedding at any point during the denoising process.
+                      Early steps establish overall form and composition; late steps refine
+                      detail. Scrub the generation timeline back to any saved step and resume
+                      with a new prompt mix to branch the output from that point.
+                    </td>
+                    <td className="about-math">
+                      <KaTeX math={`x_{t-1} = \\text{denoise}(x_t,\\, t,\\, \\mathbf{v}_f)`} />
+                      <KaTeX math={`\\mathbf{v}_f \\leftarrow \\mathbf{v}_f^{\\prime} \\text{ at step } k`} />
                     </td>
                   </tr>
                   <tr>
@@ -95,6 +121,9 @@ export default function About({ onClose }) {
                       brush strokes. Paint a mask over the area you want to control, set a prompt
                       per region, and the model generates a unified image that respects the spatial
                       layout via a custom attention processor applied at each diffusion step.
+                    </td>
+                    <td className="about-math">
+                      <KaTeX math={`l_{m,k}(x,y) = \\begin{cases} v(l_I(x,y),\\,k) & k < \\left(1 - \\tfrac{o}{100}\\right)K \\\\ l_k(x,y) & k \\geq \\left(1 - \\tfrac{o}{100}\\right)K \\end{cases}`} />
                     </td>
                   </tr>
                 </tbody>

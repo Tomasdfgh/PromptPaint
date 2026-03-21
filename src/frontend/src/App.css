@@ -637,6 +637,44 @@ body {
   background: var(--border);
   border-radius: 2px;
   overflow: hidden;
+  position: relative;
+}
+
+.scrub-bar {
+  cursor: pointer;
+  overflow: visible;
+  height: 6px;
+}
+.scrub-bar:hover {
+  height: 8px;
+}
+
+.scrub-tick {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 3px;
+  height: 10px;
+  background: var(--accent);
+  border-radius: 1px;
+  opacity: 0.5;
+  pointer-events: none;
+}
+.scrub-tick.scrub-tick-active {
+  opacity: 1;
+  background: var(--accent);
+}
+
+.scrub-cursor {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 10px;
+  height: 10px;
+  background: white;
+  border: 2px solid var(--accent);
+  border-radius: 50%;
+  pointer-events: none;
 }
 
 .progress-bar-fill {
@@ -1571,6 +1609,20 @@ body {
 .about-feature-table td:last-child {
   color: var(--text-muted);
   line-height: 1.65;
+}
+
+.about-math {
+  width: 220px;
+  font-size: 0.82rem;
+}
+.about-math .katex-display {
+  margin: 0.3em 0;
+}
+.app.light .about-math .katex {
+  color: var(--text);
+}
+.app.dark .about-math .katex {
+  color: #e2e8f0;
 }
 
 /* ── Contact ───────────────────────────────────────────────── */

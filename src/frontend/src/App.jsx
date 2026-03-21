@@ -17,14 +17,12 @@ const DEFAULT_PARAMS = {
   prompts: [{ text: '', color: '#e8455c', weight: 1 }, { text: '', color: '#4fa3e8', weight: 1 }],
   from_concept: '',
   to_concept: '',
-  intervention_prompt: '',
   alpha: 0.5,
   scale: 1.0,
   steps: 20,
   guide_scale: 7,
   single_stroke: 20,
   overcoat: 70,
-  intervention_step: 15,
   width: 1344,
   height: 768,
 };
@@ -43,7 +41,13 @@ export default function App() {
   const [queuePos,    setQueuePos]    = useState(null);
   const [paletteWeights, setPaletteWeights] = useState([]);
   const [theme, setTheme] = useState(() => localStorage.getItem('pp-theme') || 'dark');
-  const menuRef  = useRef(null);
+
+  // Scrubber state
+  const [stepPreviews,  setStepPreviews]  = useState({});  // step → b64
+  const [resumeStep,    setResumeStep]    = useState(null); // step to resume from on next Paint
+  const [scrubImage,    setScrubImage]    = useState(null); // overrides imageB64 while scrubbing
+  const menuRef       = useRef(null);
+  const totalStepsRef = useRef(0);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -78,21 +82,21 @@ export default function App() {
     socket.on('progress', (data) => {
       setStep(data.step);
       setTotalSteps(data.total);
-      if (data.preview) setImageB64(data.preview);
+      totalStepsRef.current = data.total;
+      if (data.preview) {
+        setImageB64(data.preview);
+        setStepPreviews(prev => ({ ...prev, [data.step]: data.preview }));
+      }
     });
 
     socket.on('result', (data) => {
       setImageB64(data.image);
+      setStepPreviews(prev => ({ ...prev, [totalStepsRef.current]: data.image }));
       setGenerating(false);
       setQueuePos(null);
       setStep(0);
     });
 
-    socket.on('cancelled', () => {
-      setGenerating(false);
-      setQueuePos(null);
-      setStep(0);
-    });
 
     socket.on('error', (data) => {
       setGenerating(false);
@@ -111,7 +115,6 @@ export default function App() {
       socket.off('disconnect');
       socket.off('progress');
       socket.off('result');
-      socket.off('cancelled');
       socket.off('error');
       socket.off('status');
     };
@@ -144,24 +147,38 @@ export default function App() {
       mode: effectiveMode,
       prompt: mode === 'standard' ? (prompts[0]?.text || '') : params.prompt,
       strokes: mode === 'stencil' ? strokes : undefined,
+      resume_step: resumeStep ?? -1,
     };
 
+    // On fresh generation clear all previews; on resume keep steps up to resumeStep
+    if (resumeStep === null) {
+      setStepPreviews({});
+    } else {
+      setStepPreviews(prev => Object.fromEntries(
+        Object.entries(prev).filter(([k]) => Number(k) <= resumeStep)
+      ));
+    }
+
+    setScrubImage(null);
+    setResumeStep(null);
     setGenerating(true);
-    setStep(0);
+    setStep(resumeStep ?? 0);
     setTotalSteps(params.steps || 20);
-    setImageB64(null);
+    totalStepsRef.current = params.steps || 20;
+    if (resumeStep === null) setImageB64(null);
+    else setImageB64(stepPreviews[resumeStep] ?? null);
     setStatusMsg('Starting…');
     socket.emit('generate', payload);
-  }, [generating, mode, params, strokes, paletteWeights]);
+  }, [generating, mode, params, strokes, paletteWeights, resumeStep]);
 
-  const handleIntervene = useCallback(() => {
-    socket.emit('intervene', { prompt: params.intervention_prompt });
-    setStatusMsg(`Intervened at step ${step}`);
-  }, [params.intervention_prompt, step]);
+  const handleScrub = useCallback((s) => {
+    setResumeStep(s);
+    setScrubImage(stepPreviews[s] ?? null);
+  }, [stepPreviews]);
 
-  const handleCancel = useCallback(() => {
-    socket.emit('cancel');
-    setStatusMsg('Cancelling…');
+  const handleUnscrub = useCallback(() => {
+    setResumeStep(null);
+    setScrubImage(null);
   }, []);
 
   const handleModeChange = useCallback((newMode) => {
@@ -237,20 +254,22 @@ export default function App() {
           mode={mode}               onModeChange={handleModeChange}
           params={params}           onParamsChange={setParams}
           onGenerate={handleGenerate}
-          onIntervene={handleIntervene}
-          onCancel={handleCancel}
           generating={generating}
           queuePos={queuePos}
           step={step}               totalSteps={totalSteps}
           brushRadius={brushRadius} onBrushRadiusChange={setBrushRadius}
           onPaletteWeightsChange={setPaletteWeights}
+          stepPreviews={stepPreviews}
+          resumeStep={resumeStep}
+          onScrub={handleScrub}
+          onUnscrub={handleUnscrub}
         />
 
         <section className="canvas-area">
 
           {/* Mode tabs — top-left of canvas area */}
           <div className="canvas-mode-tabs">
-            {['standard', 'stencil', 'intervention'].map(m => (
+            {['standard', 'stencil'].map(m => (
               <button
                 key={m}
                 className={`mode-tab ${mode === m ? 'active' : ''}`}
@@ -302,7 +321,7 @@ export default function App() {
           </div>
 
           <Canvas
-            imageB64={imageB64}
+            imageB64={scrubImage ?? imageB64}
             stencilMode={mode === 'stencil'}
             brushRadius={brushRadius}
             onStrokesChange={setStrokes}

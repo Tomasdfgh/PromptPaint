@@ -5,7 +5,6 @@ Runs on its own CUDA container, stays up across Flask restarts.
 Endpoints:
   GET  /health
   POST /generate   → streams newline-delimited JSON (progress + final image)
-  POST /intervene  → swaps embedding mid-generation
   POST /encode     → returns embeddings for a prompt (for future use)
 """
 
@@ -77,37 +76,43 @@ class GenerationState:
     def __init__(self):
         self._lock        = threading.Lock()
         self.running      = False
-        self.cancel_flag  = False
         self._embedding   = None   # (seq, pooled) — swappable mid-loop
         self.current_step = 0
 
     def start(self, embedding):
         with self._lock:
             self.running      = True
-            self.cancel_flag  = False
             self._embedding   = embedding
             self.current_step = 0
-
-    def set_embedding(self, emb):
-        with self._lock:
-            self._embedding = emb
 
     def get_embedding(self):
         with self._lock:
             return self._embedding
 
-    def request_cancel(self):
-        with self._lock:
-            self.cancel_flag = True
-
-    def is_cancelled(self):
-        with self._lock:
-            return self.cancel_flag
 
 
 # Dict keyed by session_id (Socket.IO sid passed from the Flask backend)
 sessions: dict[str, GenerationState] = {}
 sessions_lock = threading.Lock()
+
+# Per-session latent store — CPU tensors keyed by (session_id, step)
+# Persists across generation calls so the user can scrub back and resume.
+_session_latents: dict[str, dict[int, torch.Tensor]] = {}
+_session_latents_lock = threading.Lock()
+
+def _save_latent(session_id: str, step: int, latent: torch.Tensor):
+    with _session_latents_lock:
+        if session_id not in _session_latents:
+            _session_latents[session_id] = {}
+        _session_latents[session_id][step] = latent.cpu()
+
+def _get_latent(session_id: str, step: int) -> torch.Tensor | None:
+    with _session_latents_lock:
+        return _session_latents.get(session_id, {}).get(step)
+
+def _clear_session_latents(session_id: str):
+    with _session_latents_lock:
+        _session_latents.pop(session_id, None)
 
 
 def _get_session(session_id: str) -> GenerationState | None:
@@ -138,7 +143,6 @@ class GenerateRequest(BaseModel):
     prompt_b:            str   = ""
     from_concept:        str   = ""
     to_concept:          str   = ""
-    intervention_prompt: str   = ""
     alpha:               float = 0.5
     scale:               float = 1.0
     steps:               int   = 20
@@ -147,16 +151,10 @@ class GenerateRequest(BaseModel):
     overcoat:            int   = 70
     width:               int   = 1024
     height:              int   = 1024
-    intervention_step:   int   = 15
+    resume_step:         int   = -1
     strokes:             list  = []
     prompts:             list  = []
-
-class InterveneRequest(BaseModel):
-    session_id: str = "default"
-    prompt:     str = ""
-
-class CancelRequest(BaseModel):
-    session_id: str = "default"
+    directional_prompts: list  = []
 
 class EncodeRequest(BaseModel):
     prompt: str
@@ -219,10 +217,6 @@ def _generation_loop(req: GenerateRequest, queue: asyncio.Queue, loop: asyncio.A
             to_c    = encode_prompt(req.to_concept,   pipe)
             pos_emb, pos_pooled = directional_embedding(base, from_c, to_c, req.scale)
 
-        elif mode == "intervention":
-            pos_emb, pos_pooled = encode_prompt(req.prompt, pipe)
-            int_emb, int_pooled = encode_prompt(req.intervention_prompt, pipe)
-
         elif mode == "stencil":
             emb_a, pooled_a = encode_prompt(req.prompt_a, pipe)
             emb_b, pooled_b = encode_prompt(req.prompt_b, pipe)
@@ -236,6 +230,17 @@ def _generation_loop(req: GenerateRequest, queue: asyncio.Queue, loop: asyncio.A
             )
             return
 
+        # Apply directional prompts on top of whatever embedding was computed above.
+        # Skip entries where from/to are empty or scale is zero.
+        for d in req.directional_prompts:
+            if not d.get('from', '').strip() or not d.get('to', '').strip() or d.get('scale', 0) == 0:
+                continue
+            from_c = encode_prompt(d['from'], pipe)
+            to_c   = encode_prompt(d['to'],   pipe)
+            pos_emb, pos_pooled = directional_embedding(
+                (pos_emb, pos_pooled), from_c, to_c, float(d['scale'])
+            )
+
         state.start((pos_emb, pos_pooled))
 
         # Scheduler + latents
@@ -243,37 +248,46 @@ def _generation_loop(req: GenerateRequest, queue: asyncio.Queue, loop: asyncio.A
         timesteps = pipe.scheduler.timesteps
 
         latent_shape = (1, pipe.unet.config.in_channels, req.height // 8, req.width // 8)
-        latents = torch.randn(latent_shape, device=pipe.device, dtype=torch.float16)
-        latents = latents * pipe.scheduler.init_noise_sigma
+
+        # Resume from a saved latent, or start fresh
+        resume_step = req.resume_step
+        print(f"[DEBUG] session={req.session_id} resume_step={resume_step} stored_keys={list(_session_latents.get(req.session_id, {}).keys())}")
+        if resume_step >= 0:
+            saved_latent = _get_latent(req.session_id, resume_step)
+            print(f"[DEBUG] latent lookup for step {resume_step}: {'FOUND' if saved_latent is not None else 'MISSING'}")
+            if saved_latent is not None:
+                latents   = saved_latent.to(pipe.device, dtype=torch.float16)
+                timesteps = timesteps[resume_step:]
+            else:
+                resume_step = -1  # saved latent missing, fall back to fresh
+        if resume_step < 0:
+            _clear_session_latents(req.session_id)
+            latents = torch.randn(latent_shape, device=pipe.device, dtype=torch.float16)
+            latents = latents * pipe.scheduler.init_noise_sigma
 
         add_time_ids = torch.tensor(
             [[req.height, req.width, 0, 0, req.height, req.width]],
             dtype=torch.float16, device=pipe.device,
         )
 
-        # Emit initial noise so the canvas clears immediately
+        # Emit the initial state (noise for fresh, saved preview for resumed)
         asyncio.run_coroutine_threadsafe(
             queue.put(_event({
                 "type":    "progress",
-                "step":    0,
+                "step":    resume_step if resume_step >= 0 else 0,
                 "total":   req.steps,
                 "preview": _latents_to_b64(latents, pipe),
             })), loop
         )
 
-        for i, t in enumerate(timesteps):
-            if state.is_cancelled():
-                asyncio.run_coroutine_threadsafe(
-                    queue.put(_event({"type": "cancelled"})), loop
-                )
-                return
+        step_offset = resume_step if resume_step >= 0 else 0
 
-            state.current_step = i
+        for i, t in enumerate(timesteps):
+            abs_step = step_offset + i
+            state.current_step = abs_step
 
             # Pick embeddings for this step
-            if mode == "intervention" and i >= req.intervention_step:
-                cur_emb, cur_pooled = state.get_embedding() or (int_emb, int_pooled)
-            elif mode == "stencil":
+            if mode == "stencil":
                 cur_emb, cur_pooled = pos_emb, pos_pooled
             else:
                 cur_emb, cur_pooled = state.get_embedding() or (pos_emb, pos_pooled)
@@ -296,10 +310,14 @@ def _generation_loop(req: GenerateRequest, queue: asyncio.Queue, loop: asyncio.A
             noise_pred = noise_uncond + req.guide_scale * (noise_cond - noise_uncond)
             latents = pipe.scheduler.step(noise_pred, t, latents).prev_sample
 
+            # Always save latent to CPU so the user can scrub back to any step
+            _save_latent(req.session_id, abs_step + 1, latents)
+
             # Emit preview every single_stroke% of steps (100% = only at the end)
             preview_every = max(1, round(req.steps * req.single_stroke / 100))
-            is_preview_step = (i + 1) % preview_every == 0 or i == req.steps - 1
-            event_data = {"type": "progress", "step": i + 1, "total": req.steps}
+            abs_step_done = abs_step + 1
+            is_preview_step = abs_step_done % preview_every == 0 or abs_step_done == req.steps
+            event_data = {"type": "progress", "step": abs_step_done, "total": req.steps}
             if is_preview_step:
                 event_data["preview"] = _latents_to_b64(latents, pipe)
             asyncio.run_coroutine_threadsafe(queue.put(_event(event_data)), loop)
@@ -368,25 +386,6 @@ async def generate(req: GenerateRequest):
             "Cache-Control": "no-cache",
         },
     )
-
-
-@app.post("/intervene")
-def intervene(req: InterveneRequest):
-    state = _get_session(req.session_id)
-    if not state or not state.running:
-        return {"error": "No generation in progress for this session"}
-    pipe = get_pipeline()
-    emb  = encode_prompt(req.prompt, pipe)
-    state.set_embedding(emb)
-    return {"status": "ok", "step": state.current_step}
-
-
-@app.post("/cancel")
-def cancel(req: CancelRequest):
-    state = _get_session(req.session_id)
-    if state:
-        state.request_cancel()
-    return {"status": "ok"}
 
 
 @app.post("/encode")

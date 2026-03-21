@@ -42,10 +42,11 @@ const sliderBg = (val, min, max) => {
 export default function Sidebar({
   mode, onModeChange,
   params, onParamsChange,
-  onGenerate, onIntervene, onCancel,
+  onGenerate,
   generating, queuePos, step, totalSteps,
   brushRadius, onBrushRadiusChange,
   onPaletteWeightsChange,
+  stepPreviews, resumeStep, onScrub, onUnscrub,
 }) {
   const set = (key, val) => onParamsChange({ ...params, [key]: val });
   const [paletteWeights, setPaletteWeights] = React.useState([]);
@@ -107,15 +108,6 @@ export default function Sidebar({
           />
         )}
 
-        {mode === 'intervention' && (
-          <InterventionPanel
-            params={params} set={set}
-            generating={generating}
-            onIntervene={onIntervene}
-            step={step}
-            totalSteps={totalSteps}
-          />
-        )}
       </div>
 
       {/* Bottom: generation settings + progress + actions */}
@@ -147,37 +139,44 @@ export default function Sidebar({
                 <path d="M13.5 7.5l-2-2"/>
                 <path d="M17 3l4 4"/>
               </svg>
-              {generating ? 'Painting…' : needsSelection ? 'Paint — select a mix' : 'Paint'}
+              {generating ? 'Painting…' : needsSelection ? 'Paint — select a mix' : resumeStep !== null ? `Resume from step ${resumeStep}` : 'Paint'}
             </>
           )}
           </button>
-          {generating && (
-            <button className="btn-cancel" onClick={onCancel}>Cancel</button>
+          {!generating && resumeStep !== null && (
+            <button className="btn-cancel" onClick={onUnscrub}>✕</button>
           )}
         </div>
 
         </div>{/* end generate-area */}
 
         <div className="generate-status-bar">
-          {generating ? (
-            queuePos ? (
-              <>
-                <div className="progress-bar-track">
-                  <div className="progress-bar-fill progress-bar-pulse" style={{ width: '100%' }} />
-                </div>
-                <span className="progress-label">Queued — position {queuePos}</span>
-              </>
-            ) : (
-              <>
-                <div className="progress-bar-track">
-                  <div
-                    className="progress-bar-fill"
-                    style={{ width: totalSteps > 0 ? `${(step / totalSteps) * 100}%` : '0%' }}
-                  />
-                </div>
-                <span className="progress-label">{step} / {totalSteps} steps</span>
-              </>
-            )
+          {generating && queuePos ? (
+            <>
+              <div className="progress-bar-track">
+                <div className="progress-bar-fill progress-bar-pulse" style={{ width: '100%' }} />
+              </div>
+              <span className="progress-label">Queued — position {queuePos}</span>
+            </>
+          ) : (generating || Object.keys(stepPreviews || {}).length > 0) ? (
+            <>
+              <ScrubBar
+                step={step}
+                totalSteps={totalSteps}
+                generating={generating}
+                stepPreviews={stepPreviews || {}}
+                resumeStep={resumeStep}
+                onScrub={onScrub}
+              />
+              <span className="progress-label">
+                {generating
+                  ? `${step} / ${totalSteps} steps`
+                  : resumeStep !== null
+                  ? `Step ${resumeStep} — click Paint to resume`
+                  : `${totalSteps} steps — scrub to go back`
+                }
+              </span>
+            </>
           ) : (
             <p className="generate-notice">Hosted from a private server in Toronto. Expect a queue during high traffic and latency issues if far away.</p>
           )}
@@ -1186,50 +1185,43 @@ function StencilPanel({ params, set, brushRadius, onBrushRadiusChange }) {
   );
 }
 
-function InterventionPanel({ params, set, generating, onIntervene, step, totalSteps }) {
+
+function ScrubBar({ step, totalSteps, generating, stepPreviews, resumeStep, onScrub }) {
+  const previewSteps = Object.keys(stepPreviews).map(Number).sort((a, b) => a - b);
+  const total = totalSteps || 1;
+
+  const handleClick = (e) => {
+    if (generating || previewSteps.length === 0) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const pct  = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const target = Math.round(pct * total);
+    const nearest = previewSteps.reduce((a, b) =>
+      Math.abs(b - target) < Math.abs(a - target) ? b : a
+    );
+    onScrub(nearest);
+  };
+
+  const fillPct = generating
+    ? (total > 0 ? (step / total) * 100 : 0)
+    : 100;
+
   return (
-    <section className="panel">
-      <label className="field-label">Starting prompt</label>
-      <textarea
-        className="prompt-input"
-        rows={3}
-        placeholder="Initial concept..."
-        value={params.prompt || ''}
-        onChange={e => set('prompt', e.target.value)}
-      />
-
-      <label className="field-label" style={{ marginTop: 10 }}>Intervention prompt</label>
-      <textarea
-        className="prompt-input"
-        rows={3}
-        placeholder="Swap to this mid-generation..."
-        value={params.intervention_prompt || ''}
-        onChange={e => set('intervention_prompt', e.target.value)}
-      />
-
-      <div className="slider-row" style={{ marginTop: 14 }}>
-        <label className="field-label">
-          Auto-switch at step — <span className="slider-value">{params.intervention_step || 15}</span>
-        </label>
-        <input
-          type="range" min={1} max={params.steps || 20} step={1}
-          value={params.intervention_step || 15}
-          onChange={e => set('intervention_step', parseInt(e.target.value))}
-          className="slider"
-          style={sliderBg(params.intervention_step || 15, 1, params.steps || 20)}
+    <div
+      className={`progress-bar-track${!generating && previewSteps.length > 0 ? ' scrub-bar' : ''}`}
+      onClick={handleClick}
+    >
+      <div className="progress-bar-fill" style={{ width: `${fillPct}%` }} />
+      {!generating && previewSteps.map(s => (
+        <div
+          key={s}
+          className={`scrub-tick${resumeStep === s ? ' scrub-tick-active' : ''}`}
+          style={{ left: `${(s / total) * 100}%` }}
         />
-      </div>
-
-      {generating && (
-        <button
-          className="btn-intervene"
-          onClick={onIntervene}
-          style={{ marginTop: 12 }}
-        >
-          Intervene now (step {step})
-        </button>
+      ))}
+      {!generating && resumeStep !== null && (
+        <div className="scrub-cursor" style={{ left: `${(resumeStep / total) * 100}%` }} />
       )}
-    </section>
+    </div>
   );
 }
 

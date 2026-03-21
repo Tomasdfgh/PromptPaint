@@ -137,28 +137,6 @@ def on_generate(data):
     socketio.start_background_task(stream_generation, sid, data)
 
 
-@socketio.on('intervene')
-def on_intervene(data):
-    """Hot-swap prompt mid-generation."""
-    from flask import request as flask_request
-    try:
-        data['session_id'] = flask_request.sid
-        r = requests.post(f'{MODEL_URL}/intervene', json=data, timeout=5)
-        emit('status', r.json())
-    except Exception as e:
-        emit('error', {'message': str(e)})
-
-
-@socketio.on('cancel')
-def on_cancel():
-    from flask import request as flask_request
-    try:
-        requests.post(f'{MODEL_URL}/cancel', json={'session_id': flask_request.sid}, timeout=3)
-        emit('status', {'message': 'Cancellation requested'})
-    except Exception as e:
-        emit('error', {'message': str(e)})
-
-
 # ---------------------------------------------------------------------------
 
 if __name__ == '__main__':
