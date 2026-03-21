@@ -25,7 +25,7 @@ from pydantic import BaseModel
 
 from pipeline import load_pipeline, get_pipeline
 from features.embedding import encode_prompt, mix_embeddings, directional_embedding
-from features.stencil import apply_stencil, remove_stencil, mask_from_brush_strokes
+from features.stencil import mask_from_brush_strokes
 
 
 # ---------------------------------------------------------------------------
@@ -155,6 +155,7 @@ class GenerateRequest(BaseModel):
     strokes:             list  = []
     prompts:             list  = []
     directional_prompts: list  = []
+    image_b64:           str   = ""
 
 class EncodeRequest(BaseModel):
     prompt: str
@@ -218,11 +219,28 @@ def _generation_loop(req: GenerateRequest, queue: asyncio.Queue, loop: asyncio.A
             pos_emb, pos_pooled = directional_embedding(base, from_c, to_c, req.scale)
 
         elif mode == "stencil":
-            emb_a, pooled_a = encode_prompt(req.prompt_a, pipe)
-            emb_b, pooled_b = encode_prompt(req.prompt_b, pipe)
-            mask = mask_from_brush_strokes(req.strokes, image_size=req.width).to(pipe.device)
-            apply_stencil(pipe.unet, emb_a, emb_b, mask)
-            pos_emb, pos_pooled = emb_a, pooled_a  # UNet call uses emb_a; processor handles split
+            print(f"[stencil] prompt_b='{req.prompt_b[:60]}' strokes={len(req.strokes)} has_image={bool(req.image_b64)}")
+            pos_emb, pos_pooled = encode_prompt(req.prompt_b, pipe)
+            stencil_mask = mask_from_brush_strokes(req.strokes, width=req.width, height=req.height).to(pipe.device)  # [H_lat, W_lat], 1=painted
+            stencil_mask_4d = stencil_mask.unsqueeze(0).unsqueeze(0)  # [1, 1, H_lat, W_lat]
+            painted_frac = stencil_mask.mean().item()
+            print(f"[stencil] mask shape={tuple(stencil_mask.shape)} painted={painted_frac*100:.1f}% unpainted={100-painted_frac*100:.1f}%")
+
+            # Encode the existing canvas image so we can pin the unmasked region
+            stencil_image_latent = None
+            if req.image_b64:
+                import base64 as _b64, io as _io
+                from PIL import Image as _PILImage
+                img_bytes = _b64.b64decode(req.image_b64)
+                img = _PILImage.open(_io.BytesIO(img_bytes)).convert("RGB").resize((req.width, req.height))
+                img_np = np.array(img).astype(np.float32) / 127.5 - 1.0
+                img_tensor = torch.tensor(img_np).permute(2, 0, 1).unsqueeze(0).to(pipe.device, dtype=torch.float32)
+                with torch.no_grad():
+                    stencil_image_latent = (pipe.vae.encode(img_tensor).latent_dist.sample() * pipe.vae.config.scaling_factor).to(torch.float16)
+                stencil_noise = torch.randn_like(stencil_image_latent)  # fixed noise for consistent unmasked region
+                print(f"[stencil] encoded existing image → latent shape={tuple(stencil_image_latent.shape)}")
+            else:
+                print(f"[stencil] WARNING: no existing image — unmasked region will not be pinned, mask has no effect")
 
         else:
             asyncio.run_coroutine_threadsafe(
@@ -282,9 +300,39 @@ def _generation_loop(req: GenerateRequest, queue: asyncio.Queue, loop: asyncio.A
 
         step_offset = resume_step if resume_step >= 0 else 0
 
+        # Overcoat threshold: steps before this index reset the painted region to noisy
+        # original too (paper eq. 4). Steps at/after it let the painted region run free.
+        # overcoat=70 → threshold = 0.3 * steps → last 70% of steps are free.
+        stencil_threshold = round((1 - req.overcoat / 100) * req.steps) if mode == "stencil" else 0
+        if mode == "stencil":
+            print(f"[stencil] overcoat={req.overcoat}% → threshold step={stencil_threshold}/{req.steps} "
+                  f"(painted region free from step {stencil_threshold} onward)")
+
         for i, t in enumerate(timesteps):
             abs_step = step_offset + i
             state.current_step = abs_step
+
+            # Stencil: manipulate latent BEFORE the UNet (paper sec 5.3: "before the denoiser")
+            # l_{m,k} is what gets passed into the UNet at step k.
+            if mode == "stencil" and stencil_image_latent is not None:
+                # Euler scheduler uses sigma-space: x_noisy = x_0 + sigma * noise
+                # (NOT DDPM alpha-space: sqrt(alpha)*x_0 + sqrt(1-alpha)*noise)
+                # sigmas[abs_step] aligns with timesteps[abs_step] for both fresh and resumed runs.
+                sigma = pipe.scheduler.sigmas[abs_step].to(pipe.device, dtype=torch.float16)
+                noisy_original = stencil_image_latent + sigma * stencil_noise
+                if abs_step == 0:
+                    print(f"[stencil] sigma at step 0 = {sigma.item():.3f} (should be ~14.6 for SDXL)")
+
+                if abs_step < stencil_threshold:
+                    # eq. 4 first branch + eq. 5: entire image = noisy original
+                    latents = noisy_original.to(torch.float16)
+                    if abs_step == 0:
+                        print(f"[stencil] manipulation before UNet — early phase ({stencil_threshold} steps)")
+                else:
+                    # eq. 4 second branch: painted keeps current latent, unpainted = noisy original
+                    latents = (stencil_mask_4d * latents + (1 - stencil_mask_4d) * noisy_original).to(torch.float16)
+                    if abs_step == stencil_threshold:
+                        print(f"[stencil] free phase started at step {abs_step} — painted region guided by prompt_b")
 
             # Pick embeddings for this step
             if mode == "stencil":
@@ -335,8 +383,6 @@ def _generation_loop(req: GenerateRequest, queue: asyncio.Queue, loop: asyncio.A
         )
 
     finally:
-        if mode == "stencil":
-            remove_stencil(pipe.unet)
         _delete_session(req.session_id)
         import gc; gc.collect()
         torch.cuda.empty_cache()

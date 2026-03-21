@@ -45,7 +45,8 @@ export default function Sidebar({
   onGenerate,
   generating, queuePos, step, totalSteps,
   brushRadius, onBrushRadiusChange,
-  onPaletteWeightsChange,
+  onPaletteWeightsChange, onPaletteCursorPosChange,
+  generationChain,
   stepPreviews, resumeStep, onScrub, onUnscrub,
 }) {
   const set = (key, val) => onParamsChange({ ...params, [key]: val });
@@ -93,7 +94,14 @@ export default function Sidebar({
         )}
 
         {mode === 'standard' && (
-          <PromptPalette prompts={prompts} onWeightsChange={handlePaletteWeights} />
+          <PromptPalette
+            prompts={prompts}
+            onWeightsChange={handlePaletteWeights}
+            onCursorPosChange={onPaletteCursorPosChange}
+            historyChain={generationChain}
+            resumeStep={resumeStep}
+            generating={generating}
+          />
         )}
 
         {mode === 'standard' && (
@@ -466,7 +474,7 @@ function findComponents(n, links) {
   return components;
 }
 
-function PromptPalette({ prompts, onWeightsChange }) {
+function PromptPalette({ prompts, onWeightsChange, onCursorPosChange, historyChain, resumeStep, generating }) {
   const svgRef    = useRef(null);
   const panelRef  = useRef(null);
   const dotDragRef    = useRef(null);
@@ -509,6 +517,9 @@ function PromptPalette({ prompts, onWeightsChange }) {
       y: Math.min(Math.max(0, prev.y), VH * heightScale),
     }));
   }, [heightScale]);
+
+  useEffect(() => { onCursorPosChange?.(cursorPos); }, [cursorPos]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (generating) setFixed(true); }, [generating]);
 
   const toSVGCoords = useCallback((clientX, clientY) => {
     const svg = svgRef.current;
@@ -946,6 +957,49 @@ function PromptPalette({ prompts, onWeightsChange }) {
           );
         })()}
 
+        {/* History chain — visible while scrubbing */}
+        {resumeStep !== null && (() => {
+          const visible = (historyChain || [])
+            .filter(n => n.fromStep < resumeStep)
+            .map(n => ({
+              ...n,
+              displayTo: (n.toStep === null || n.toStep > resumeStep) ? resumeStep : n.toStep,
+            }));
+
+          if (visible.length === 0) return null;
+
+          const points = [...visible.map(n => n.pos), cursorPos];
+
+          return (
+            <>
+              {/* Dotted connecting lines */}
+              {points.map((pt, i) => {
+                if (i === 0) return null;
+                const prev = points[i - 1];
+                return (
+                  <line key={`chain-line-${i}`}
+                    x1={prev.x} y1={prev.y} x2={pt.x} y2={pt.y}
+                    stroke="#8B5E3C" strokeWidth="1" strokeDasharray="3,3" strokeOpacity="0.7"
+                    style={{ pointerEvents: 'none' }}
+                  />
+                );
+              })}
+
+              {/* History nodes */}
+              {visible.map((n, i) => (
+                <g key={`chain-node-${i}`} transform={`translate(${n.pos.x},${n.pos.y})`} style={{ pointerEvents: 'none' }}>
+                  <text y={-16} textAnchor="middle" fill="#8B5E3C" fontSize="8" fontWeight="600" style={{ userSelect: 'none' }}>
+                    step {n.fromStep} to {n.displayTo}
+                  </text>
+                  <circle r={9} fill="#8B5E3C" stroke="#8B5E3C" strokeWidth="2" />
+                  <line x1={-5} y1={0} x2={5} y2={0} stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+                  <line x1={0} y1={-5} x2={0} y2={5} stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+                </g>
+              ))}
+            </>
+          );
+        })()}
+
         {/* Cursor — always on top, draggable in any mode */}
         <g
           transform={`translate(${cursorPos.x},${cursorPos.y})`}
@@ -1203,6 +1257,8 @@ function ScrubBar({ step, totalSteps, generating, stepPreviews, resumeStep, onSc
 
   const fillPct = generating
     ? (total > 0 ? (step / total) * 100 : 0)
+    : resumeStep !== null
+    ? (resumeStep / total) * 100
     : 100;
 
   return (

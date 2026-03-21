@@ -22,6 +22,7 @@ socketio = SocketIO(
     async_mode='eventlet',
     logger=False,
     engineio_logger=False,
+    max_http_buffer_size=20_000_000,  # 20MB — needed for stencil image payloads
 )
 
 MODEL_URL  = os.getenv('MODEL_SERVICE_URL', 'http://model:8000')

@@ -643,10 +643,10 @@ body {
 .scrub-bar {
   cursor: pointer;
   overflow: visible;
-  height: 6px;
+  height: 4px;
 }
 .scrub-bar:hover {
-  height: 8px;
+  height: 6px;
 }
 
 .scrub-tick {

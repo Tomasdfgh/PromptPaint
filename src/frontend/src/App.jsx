@@ -43,9 +43,11 @@ export default function App() {
   const [theme, setTheme] = useState(() => localStorage.getItem('pp-theme') || 'dark');
 
   // Scrubber state
-  const [stepPreviews,  setStepPreviews]  = useState({});  // step → b64
-  const [resumeStep,    setResumeStep]    = useState(null); // step to resume from on next Paint
-  const [scrubImage,    setScrubImage]    = useState(null); // overrides imageB64 while scrubbing
+  const [stepPreviews,      setStepPreviews]      = useState({});   // step → b64
+  const [resumeStep,        setResumeStep]        = useState(null); // step to resume from on next Paint
+  const [scrubImage,        setScrubImage]        = useState(null); // overrides imageB64 while scrubbing
+  const [paletteCursorPos,  setPaletteCursorPos]  = useState(null); // live palette cursor position
+  const [generationChain,   setGenerationChain]   = useState([]);   // [{ pos, fromStep, toStep }] history
   const menuRef       = useRef(null);
   const totalStepsRef = useRef(0);
   const navigate = useNavigate();
@@ -92,6 +94,9 @@ export default function App() {
     socket.on('result', (data) => {
       setImageB64(data.image);
       setStepPreviews(prev => ({ ...prev, [totalStepsRef.current]: data.image }));
+      setGenerationChain(prev => prev.map((n, i) =>
+        i === prev.length - 1 ? { ...n, toStep: totalStepsRef.current } : n
+      ));
       setGenerating(false);
       setQueuePos(null);
       setStep(0);
@@ -147,6 +152,7 @@ export default function App() {
       mode: effectiveMode,
       prompt: mode === 'standard' ? (prompts[0]?.text || '') : params.prompt,
       strokes: mode === 'stencil' ? strokes : undefined,
+      image_b64: mode === 'stencil' ? (imageB64 || '') : undefined,
       resume_step: resumeStep ?? -1,
     };
 
@@ -159,6 +165,15 @@ export default function App() {
       ));
     }
 
+    if (paletteCursorPos) {
+      const fromStep = resumeStep ?? 0;
+      setGenerationChain(prev => {
+        const trimmed = prev
+          .filter(n => n.fromStep < fromStep)
+          .map(n => (n.toStep === null || n.toStep > fromStep) ? { ...n, toStep: fromStep } : n);
+        return [...trimmed, { pos: paletteCursorPos, fromStep, toStep: null }];
+      });
+    }
     setScrubImage(null);
     setResumeStep(null);
     setGenerating(true);
@@ -169,12 +184,13 @@ export default function App() {
     else setImageB64(stepPreviews[resumeStep] ?? null);
     setStatusMsg('Starting…');
     socket.emit('generate', payload);
-  }, [generating, mode, params, strokes, paletteWeights, resumeStep]);
+  }, [generating, mode, params, strokes, paletteWeights, resumeStep, paletteCursorPos, generationChain]);
 
   const handleScrub = useCallback((s) => {
+    if (s >= totalSteps) { setResumeStep(null); setScrubImage(null); return; }
     setResumeStep(s);
     setScrubImage(stepPreviews[s] ?? null);
-  }, [stepPreviews]);
+  }, [stepPreviews, totalSteps]);
 
   const handleUnscrub = useCallback(() => {
     setResumeStep(null);
@@ -259,6 +275,8 @@ export default function App() {
           step={step}               totalSteps={totalSteps}
           brushRadius={brushRadius} onBrushRadiusChange={setBrushRadius}
           onPaletteWeightsChange={setPaletteWeights}
+          onPaletteCursorPosChange={setPaletteCursorPos}
+          generationChain={generationChain}
           stepPreviews={stepPreviews}
           resumeStep={resumeStep}
           onScrub={handleScrub}
@@ -323,6 +341,7 @@ export default function App() {
           <Canvas
             imageB64={scrubImage ?? imageB64}
             stencilMode={mode === 'stencil'}
+            generating={generating}
             brushRadius={brushRadius}
             onStrokesChange={setStrokes}
             width={params.width}

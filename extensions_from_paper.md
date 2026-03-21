@@ -48,3 +48,19 @@ Deploying as a shared web service means multiple users can submit requests at an
 - **Per-session isolation**: Each Socket.IO connection gets its own `GenerationState` (cancel flag, current embedding, step counter). Intervention and cancel requests are routed by `session_id` so one user cannot affect another's generation.
 - **Approximate position estimate**: Queue position is computed as `_gpu_queue.qsize() + (1 if _worker_busy else 0)`. This is a best-effort estimate — race conditions between checking and enqueuing mean the displayed position may be off by one, but this is acceptable for UX purposes.
 - **Worker resilience**: The worker wraps each job in `try/except/finally` so an exception in one generation (e.g., OOM, bad prompt encoding) does not kill the worker thread or block subsequent jobs.
+
+## 3. Post-Hoc Prompt Intervention via Scrubber (replacing live dragging)
+
+### What the paper does
+The paper's primary intervention mechanism is **live dragging**: the user watches the noisy diffusion preview evolve in real time and drags the palette cursor to a new position mid-generation. The embedding updates at each step to wherever the cursor is. The paper also briefly mentions the ability to roll back to a specific step in the progress bar and resume from there.
+
+### What we do
+We replace live dragging entirely with a **post-hoc scrubber**. Every latent tensor is saved to CPU RAM at each diffusion step. After generation completes, the user can scrub the progress bar to any step, see the decoded preview at that step, reposition the palette cursor, and hit Resume — which continues denoising from the saved latent with the new prompt mix. Because diffusion is Markovian, this is mathematically identical to having intervened live at that step.
+
+### Why this is strictly better
+The paper's own user study found that prompt intervention was the hardest feature to use (5 out of 8 participants struggled), specifically because *"it was hard to guess the result only by seeing intermediate generation results (i.e., noisy images during the diffusion process)."* Live dragging forces split-second decisions while watching hard-to-interpret noise.
+
+The scrubber removes this burden entirely: the user sees the actual decoded image at each step before committing to a branch point. The paper explicitly discusses this as a potential improvement in Section 8.3, noting that *"making intermediate results more understandable to natural human users would be an approach to facilitate in-generation interactions."* Our scrubber achieves exactly that — by moving the decision to after generation, the user always has a clear decoded preview to reason from.
+
+### No functionality loss
+Since the Markov property guarantees that resuming from a saved latent at step k is identical to having intervened live at step k, no generative capability is lost. Users have full control over where to branch and with what prompt — they simply make that decision with better information.

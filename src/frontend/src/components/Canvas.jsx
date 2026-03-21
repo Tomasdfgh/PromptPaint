@@ -84,7 +84,7 @@ function WheelPicker({ selectedIndex, onChange }) {
   );
 }
 
-export default function Canvas({ imageB64, stencilMode, brushRadius, onStrokesChange, width = 1024, height = 1024, onSizeChange }) {
+export default function Canvas({ imageB64, stencilMode, generating, brushRadius, onStrokesChange, width = 1024, height = 1024, onSizeChange }) {
   const canvasRef   = useRef(null);
   const overlayRef  = useRef(null);
   const outerRef    = useRef(null);
@@ -221,7 +221,8 @@ export default function Canvas({ imageB64, stencilMode, brushRadius, onStrokesCh
     const canvas = overlayRef.current;
     const coords = toCanvasCoords(canvas, e.clientX, e.clientY);
     paintDot(canvas, coords.x, coords.y);
-    strokesRef.current.push({ x: coords.x, y: coords.y, radius: brushRadius });
+    const scaledRadius = brushRadius * (canvas.width / canvas.getBoundingClientRect().width);
+    strokesRef.current.push({ x: coords.x, y: coords.y, radius: scaledRadius });
     onStrokesChange([...strokesRef.current]);
   }, [stencilMode, brushRadius, toCanvasCoords, paintDot, onStrokesChange]);
 
@@ -231,7 +232,8 @@ export default function Canvas({ imageB64, stencilMode, brushRadius, onStrokesCh
     const canvas = overlayRef.current;
     const coords = toCanvasCoords(canvas, e.clientX, e.clientY);
     paintDot(canvas, coords.x, coords.y);
-    strokesRef.current.push({ x: coords.x, y: coords.y, radius: brushRadius });
+    const scaledRadius = brushRadius * (canvas.width / canvas.getBoundingClientRect().width);
+    strokesRef.current.push({ x: coords.x, y: coords.y, radius: scaledRadius });
     onStrokesChange([...strokesRef.current]);
   }, [stencilMode, brushRadius, toCanvasCoords, paintDot, onStrokesChange, isPanning, handlePanMove]);
 
@@ -247,6 +249,12 @@ export default function Canvas({ imageB64, stencilMode, brushRadius, onStrokesCh
     strokesRef.current = [];
     onStrokesChange([]);
   }, [onStrokesChange]);
+
+  // Clear the brush overlay when stencil generation completes so the result is visible
+  useEffect(() => {
+    if (!stencilMode || generating) return;
+    clearStrokes();
+  }, [generating]);
 
   // Attach wheel as non-passive to canvas outer
   useEffect(() => {
