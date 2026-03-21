@@ -254,7 +254,7 @@ export default function Canvas({ imageB64, stencilMode, generating, brushRadius,
   useEffect(() => {
     if (!stencilMode || !generating) return;
     clearStrokes();
-  }, [generating]);
+  }, [generating, stencilMode, clearStrokes]);
 
   // Attach wheel as non-passive to canvas outer
   useEffect(() => {

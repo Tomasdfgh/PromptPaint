@@ -50,8 +50,10 @@ export default function App() {
   const [generationChain,   setGenerationChain]   = useState([]);   // [{ pos, fromStep, toStep }] history
   const menuRef       = useRef(null);
   const totalStepsRef = useRef(0);
-  const imageB64Ref   = useRef(null);
+  const imageB64Ref      = useRef(null);
+  const stepPreviewsRef  = useRef({});
   useEffect(() => { imageB64Ref.current = imageB64; }, [imageB64]);
+  useEffect(() => { stepPreviewsRef.current = stepPreviews; }, [stepPreviews]);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -183,10 +185,10 @@ export default function App() {
     setTotalSteps(params.steps || 40);
     totalStepsRef.current = params.steps || 40;
     if (resumeStep === null && mode !== 'stencil') setImageB64(null);
-    else setImageB64(stepPreviews[resumeStep] ?? null);
+    else setImageB64(stepPreviewsRef.current[resumeStep] ?? null);
     setStatusMsg('Starting…');
     socket.emit('generate', payload);
-  }, [generating, mode, params, strokes, paletteWeights, resumeStep, paletteCursorPos, generationChain]);
+  }, [generating, mode, params, strokes, paletteWeights, resumeStep, paletteCursorPos]);
 
   const handleScrub = useCallback((s) => {
     if (s >= totalSteps) { setResumeStep(null); setScrubImage(null); return; }
