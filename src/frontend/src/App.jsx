@@ -19,10 +19,10 @@ const DEFAULT_PARAMS = {
   to_concept: '',
   alpha: 0.5,
   scale: 1.0,
-  steps: 20,
+  steps: 40,
   guide_scale: 7,
   single_stroke: 20,
-  overcoat: 70,
+  overcoat: 100,
   width: 1344,
   height: 768,
 };
@@ -50,6 +50,8 @@ export default function App() {
   const [generationChain,   setGenerationChain]   = useState([]);   // [{ pos, fromStep, toStep }] history
   const menuRef       = useRef(null);
   const totalStepsRef = useRef(0);
+  const imageB64Ref   = useRef(null);
+  useEffect(() => { imageB64Ref.current = imageB64; }, [imageB64]);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -152,7 +154,7 @@ export default function App() {
       mode: effectiveMode,
       prompt: mode === 'standard' ? (prompts[0]?.text || '') : params.prompt,
       strokes: mode === 'stencil' ? strokes : undefined,
-      image_b64: mode === 'stencil' ? (imageB64 || '') : undefined,
+      image_b64: mode === 'stencil' ? (imageB64Ref.current || '') : undefined,
       resume_step: resumeStep ?? -1,
     };
 
@@ -178,9 +180,9 @@ export default function App() {
     setResumeStep(null);
     setGenerating(true);
     setStep(resumeStep ?? 0);
-    setTotalSteps(params.steps || 20);
-    totalStepsRef.current = params.steps || 20;
-    if (resumeStep === null) setImageB64(null);
+    setTotalSteps(params.steps || 40);
+    totalStepsRef.current = params.steps || 40;
+    if (resumeStep === null && mode !== 'stencil') setImageB64(null);
     else setImageB64(stepPreviews[resumeStep] ?? null);
     setStatusMsg('Starting…');
     socket.emit('generate', payload);

@@ -127,7 +127,7 @@ export default function Sidebar({
 
         {/* Generate area: hover reveals settings above the button */}
         <div className="generate-area">
-          <SharedParams params={params} set={set} />
+          <SharedParams params={params} set={set} mode={mode} />
 
           {/* Action buttons */}
           <div className="action-row">
@@ -147,7 +147,7 @@ export default function Sidebar({
                 <path d="M13.5 7.5l-2-2"/>
                 <path d="M17 3l4 4"/>
               </svg>
-              {generating ? 'Painting…' : needsSelection ? 'Paint — select a mix' : resumeStep !== null ? `Resume from step ${resumeStep}` : 'Paint'}
+              {generating ? 'Painting…' : needsSelection ? 'Paint (select a mix first)' : resumeStep !== null ? `Resume from step ${resumeStep}` : 'Paint'}
             </>
           )}
           </button>
@@ -1281,21 +1281,22 @@ function ScrubBar({ step, totalSteps, generating, stepPreviews, resumeStep, onSc
   );
 }
 
-function SharedParams({ params, set }) {
+function SharedParams({ params, set, mode }) {
+  const isStencil = mode === 'stencil';
   return (
     <section className="panel panel-settings">
       <label className="field-label" style={{ marginBottom: 6 }}>Generation settings</label>
       <div className="sliders-grid">
         <div className="slider-row">
           <label className="field-label">
-            Steps — <span className="slider-value">{params.steps || 20}</span>
+            Steps — <span className="slider-value">{params.steps || 40}</span>
           </label>
           <input
-            type="range" min={10} max={50} step={1}
-            value={params.steps || 20}
+            type="range" min={10} max={80} step={1}
+            value={params.steps || 40}
             onChange={e => set('steps', parseInt(e.target.value))}
             className="slider"
-            style={sliderBg(params.steps || 20, 10, 50)}
+            style={sliderBg(params.steps || 40, 10, 80)}
           />
         </div>
         <div className="slider-row">
@@ -1322,16 +1323,17 @@ function SharedParams({ params, set }) {
             style={sliderBg(params.single_stroke ?? 20, 10, 100)}
           />
         </div>
-        <div className="slider-row">
+        <div className="slider-row" style={!isStencil ? { opacity: 0.35, pointerEvents: 'none' } : {}}>
           <label className="field-label">
-            Overcoat — <span className="slider-value">{params.overcoat ?? 70}%</span>
+            Overcoat — <span className="slider-value">{params.overcoat ?? 100}%</span>
           </label>
           <input
             type="range" min={0} max={100} step={5}
-            value={params.overcoat ?? 70}
+            value={params.overcoat ?? 100}
             onChange={e => set('overcoat', parseInt(e.target.value))}
             className="slider"
-            style={sliderBg(params.overcoat ?? 70, 0, 100)}
+            style={sliderBg(params.overcoat ?? 100, 0, 100)}
+            disabled={!isStencil}
           />
         </div>
       </div>

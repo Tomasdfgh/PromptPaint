@@ -145,10 +145,10 @@ class GenerateRequest(BaseModel):
     to_concept:          str   = ""
     alpha:               float = 0.5
     scale:               float = 1.0
-    steps:               int   = 20
+    steps:               int   = 40
     guide_scale:         float = 7.0
-    single_stroke:       int   = 100
-    overcoat:            int   = 70
+    single_stroke:       int   = 20
+    overcoat:            int   = 100
     width:               int   = 1024
     height:              int   = 1024
     resume_step:         int   = -1
@@ -288,13 +288,19 @@ def _generation_loop(req: GenerateRequest, queue: asyncio.Queue, loop: asyncio.A
             dtype=torch.float16, device=pipe.device,
         )
 
-        # Emit the initial state (noise for fresh, saved preview for resumed)
+        # Emit the initial state.
+        # For stencil with an existing image, show the original instead of random noise.
+        _initial_preview = (
+            stencil_image_latent
+            if (mode == "stencil" and stencil_image_latent is not None)
+            else latents
+        )
         asyncio.run_coroutine_threadsafe(
             queue.put(_event({
                 "type":    "progress",
                 "step":    resume_step if resume_step >= 0 else 0,
                 "total":   req.steps,
-                "preview": _latents_to_b64(latents, pipe),
+                "preview": _latents_to_b64(_initial_preview, pipe),
             })), loop
         )
 
@@ -367,8 +373,25 @@ def _generation_loop(req: GenerateRequest, queue: asyncio.Queue, loop: asyncio.A
             is_preview_step = abs_step_done % preview_every == 0 or abs_step_done == req.steps
             event_data = {"type": "progress", "step": abs_step_done, "total": req.steps}
             if is_preview_step:
-                event_data["preview"] = _latents_to_b64(latents, pipe)
+                if mode == "stencil" and stencil_image_latent is not None:
+                    if abs_step < stencil_threshold:
+                        # Early phase: painted region hasn't formed yet — show original
+                        preview_latents = stencil_image_latent
+                    else:
+                        # Free phase: composite painted (current) onto clean original
+                        preview_latents = (stencil_mask_4d * latents + (1 - stencil_mask_4d) * stencil_image_latent)
+                else:
+                    preview_latents = latents
+                event_data["preview"] = _latents_to_b64(preview_latents, pipe)
             asyncio.run_coroutine_threadsafe(queue.put(_event(event_data)), loop)
+
+        # Final stencil compositing: pin unpainted region exactly to the original.
+        # The paper (eq. 4-5) applies the mask before each UNet call, but the final
+        # scheduler.step() output has no subsequent correction. At the last step
+        # sigma ≈ 0 so noisy_original ≈ stencil_image_latent; we use the clean
+        # latent directly for pixel-perfect unpainted preservation.
+        if mode == "stencil" and stencil_image_latent is not None:
+            latents = (stencil_mask_4d * latents + (1 - stencil_mask_4d) * stencil_image_latent).to(torch.float16)
 
         # Final image
         final = _latents_to_b64(latents, pipe)

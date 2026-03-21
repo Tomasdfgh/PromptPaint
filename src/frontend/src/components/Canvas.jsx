@@ -250,9 +250,9 @@ export default function Canvas({ imageB64, stencilMode, generating, brushRadius,
     onStrokesChange([]);
   }, [onStrokesChange]);
 
-  // Clear the brush overlay when stencil generation completes so the result is visible
+  // Clear the brush overlay when stencil generation begins
   useEffect(() => {
-    if (!stencilMode || generating) return;
+    if (!stencilMode || !generating) return;
     clearStrokes();
   }, [generating]);
 
