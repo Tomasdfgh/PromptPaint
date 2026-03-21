@@ -165,7 +165,7 @@ class EncodeRequest(BaseModel):
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _latents_to_b64(latents: torch.Tensor, pipe) -> str:
+def _decode_latents(latents: torch.Tensor, pipe) -> np.ndarray:
     with torch.no_grad():
         # SDXL VAE produces NaN in float16 — upcast to float32 for decode
         image = pipe.vae.decode(
@@ -175,9 +175,25 @@ def _latents_to_b64(latents: torch.Tensor, pipe) -> str:
     image = (image / 2 + 0.5).clamp(0, 1)
     image = torch.nan_to_num(image, nan=0.0)  # safety net
     image = image.squeeze(0).permute(1, 2, 0).float().cpu().numpy()
-    image = (image * 255).round().astype(np.uint8)
+    return (image * 255).round().astype(np.uint8)
+
+def _latents_to_b64(latents: torch.Tensor, pipe) -> str:
+    image = _decode_latents(latents, pipe)
     buf = io.BytesIO()
     Image.fromarray(image).save(buf, format="PNG")
+    return base64.b64encode(buf.getvalue()).decode()
+
+def _latents_to_b64_masked(latents: torch.Tensor, mask: torch.Tensor, width: int, height: int, pipe) -> str:
+    """Decode to RGBA PNG — painted region opaque, unmasked region transparent."""
+    import torch.nn.functional as F
+    image = _decode_latents(latents, pipe)
+    alpha = F.interpolate(
+        mask.float().unsqueeze(0).unsqueeze(0), size=(height, width), mode='nearest'
+    )
+    alpha = (alpha.squeeze().cpu().numpy() * 255).astype(np.uint8)
+    rgba = np.dstack([image, alpha])
+    buf = io.BytesIO()
+    Image.fromarray(rgba, mode='RGBA').save(buf, format="PNG")
     return base64.b64encode(buf.getvalue()).decode()
 
 def _event(data: dict) -> str:
@@ -219,28 +235,39 @@ def _generation_loop(req: GenerateRequest, queue: asyncio.Queue, loop: asyncio.A
             pos_emb, pos_pooled = directional_embedding(base, from_c, to_c, req.scale)
 
         elif mode == "stencil":
-            print(f"[stencil] prompt_b='{req.prompt_b[:60]}' strokes={len(req.strokes)} has_image={bool(req.image_b64)}")
-            pos_emb, pos_pooled = encode_prompt(req.prompt_b, pipe)
+            print(f"[stencil] strokes={len(req.strokes)} has_image={bool(req.image_b64)}")
+            if req.prompts:
+                # Use the palette mixing embedding for the painted region
+                prompt_list = req.prompts
+                print(f"[stencil] using {len(prompt_list)} mixed prompts for painted region")
+                embeddings = [encode_prompt(p["text"], pipe) for p in prompt_list]
+                weights    = [float(p["weight"]) for p in prompt_list]
+                pos_emb, pos_pooled = mix_embeddings(embeddings, weights)
+            else:
+                # Fallback: single prompt_b
+                print(f"[stencil] prompt_b='{req.prompt_b[:60]}'")
+                pos_emb, pos_pooled = encode_prompt(req.prompt_b, pipe)
             stencil_mask = mask_from_brush_strokes(req.strokes, width=req.width, height=req.height).to(pipe.device)  # [H_lat, W_lat], 1=painted
             stencil_mask_4d = stencil_mask.unsqueeze(0).unsqueeze(0)  # [1, 1, H_lat, W_lat]
             painted_frac = stencil_mask.mean().item()
             print(f"[stencil] mask shape={tuple(stencil_mask.shape)} painted={painted_frac*100:.1f}% unpainted={100-painted_frac*100:.1f}%")
 
-            # Encode the existing canvas image so we can pin the unmasked region
-            stencil_image_latent = None
+            # Encode the existing canvas image (or a blank white canvas) so we can pin the unmasked region
+            import base64 as _b64, io as _io
+            from PIL import Image as _PILImage
             if req.image_b64:
-                import base64 as _b64, io as _io
-                from PIL import Image as _PILImage
                 img_bytes = _b64.b64decode(req.image_b64)
                 img = _PILImage.open(_io.BytesIO(img_bytes)).convert("RGB").resize((req.width, req.height))
-                img_np = np.array(img).astype(np.float32) / 127.5 - 1.0
-                img_tensor = torch.tensor(img_np).permute(2, 0, 1).unsqueeze(0).to(pipe.device, dtype=torch.float32)
-                with torch.no_grad():
-                    stencil_image_latent = (pipe.vae.encode(img_tensor).latent_dist.sample() * pipe.vae.config.scaling_factor).to(torch.float16)
-                stencil_noise = torch.randn_like(stencil_image_latent)  # fixed noise for consistent unmasked region
-                print(f"[stencil] encoded existing image → latent shape={tuple(stencil_image_latent.shape)}")
+                print(f"[stencil] encoded existing image → latent shape will be computed")
             else:
-                print(f"[stencil] WARNING: no existing image — unmasked region will not be pinned, mask has no effect")
+                img = _PILImage.new("RGB", (req.width, req.height), color=(255, 255, 255))
+                print(f"[stencil] no existing image — using blank white canvas as base")
+            img_np = np.array(img).astype(np.float32) / 127.5 - 1.0
+            img_tensor = torch.tensor(img_np).permute(2, 0, 1).unsqueeze(0).to(pipe.device, dtype=torch.float32)
+            with torch.no_grad():
+                stencil_image_latent = (pipe.vae.encode(img_tensor).latent_dist.sample() * pipe.vae.config.scaling_factor).to(torch.float16)
+            stencil_noise = torch.randn_like(stencil_image_latent)  # fixed noise for consistent unmasked region
+            print(f"[stencil] latent shape={tuple(stencil_image_latent.shape)}")
 
         else:
             asyncio.run_coroutine_threadsafe(
@@ -375,14 +402,15 @@ def _generation_loop(req: GenerateRequest, queue: asyncio.Queue, loop: asyncio.A
             if is_preview_step:
                 if mode == "stencil" and stencil_image_latent is not None:
                     if abs_step < stencil_threshold:
-                        # Early phase: painted region hasn't formed yet — show original
+                        # Early phase: painted region hasn't formed yet — show original (or blank)
                         preview_latents = stencil_image_latent
                     else:
-                        # Free phase: composite painted (current) onto clean original
+                        # Free phase: composite painted (current) onto clean original (or blank)
                         preview_latents = (stencil_mask_4d * latents + (1 - stencil_mask_4d) * stencil_image_latent)
+                    event_data["preview"] = _latents_to_b64_masked(preview_latents, stencil_mask, req.width, req.height, pipe)
                 else:
                     preview_latents = latents
-                event_data["preview"] = _latents_to_b64(preview_latents, pipe)
+                    event_data["preview"] = _latents_to_b64(preview_latents, pipe)
             asyncio.run_coroutine_threadsafe(queue.put(_event(event_data)), loop)
 
         # Final stencil compositing: pin unpainted region exactly to the original.
@@ -393,8 +421,11 @@ def _generation_loop(req: GenerateRequest, queue: asyncio.Queue, loop: asyncio.A
         if mode == "stencil" and stencil_image_latent is not None:
             latents = (stencil_mask_4d * latents + (1 - stencil_mask_4d) * stencil_image_latent).to(torch.float16)
 
-        # Final image
-        final = _latents_to_b64(latents, pipe)
+        # Final image — stencil always outputs RGBA with mask so frontend can composite correctly
+        if mode == "stencil":
+            final = _latents_to_b64_masked(latents, stencil_mask, req.width, req.height, pipe)
+        else:
+            final = _latents_to_b64(latents, pipe)
         asyncio.run_coroutine_threadsafe(
             queue.put(_event({"type": "result", "image": final})), loop
         )

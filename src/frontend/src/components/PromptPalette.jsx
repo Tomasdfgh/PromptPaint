@@ -129,7 +129,7 @@ function PromptPalette({ prompts, onWeightsChange, onCursorPosChange, historyCha
   const [mousePos, setMousePos] = useState(null);
   const [links, setLinks] = useState([]);
   const [topDot, setTopDot] = useState(null);
-  const [cursorPos, setCursorPos] = useState({ x: VW * 0.56, y: VH * 0.5 });
+  const [cursorPos, setCursorPos] = useState(() => defaultPalettePos(0, prompts.length));
 
   const setHeightScale = (v) => {
     heightScaleRef.current = v;
@@ -170,6 +170,8 @@ function PromptPalette({ prompts, onWeightsChange, onCursorPosChange, historyCha
 
   const fixedRef = useRef(fixed);
   fixedRef.current = fixed;
+  const generatingRef = useRef(generating);
+  generatingRef.current = generating;
   const selectedDotRef = useRef(selectedDot);
   selectedDotRef.current = selectedDot;
   const mousedownPosRef = useRef(null);
@@ -237,6 +239,7 @@ function PromptPalette({ prompts, onWeightsChange, onCursorPosChange, historyCha
   }, []);
 
   const handleCursorMouseDown = useCallback((e) => {
+    if (generatingRef.current) return;
     e.preventDefault();
     e.stopPropagation();
     const onMove = (me) => {
@@ -643,7 +646,7 @@ function PromptPalette({ prompts, onWeightsChange, onCursorPosChange, historyCha
           transform={`translate(${cursorPos.x},${cursorPos.y})`}
           onMouseDown={handleCursorMouseDown}
           onClick={e => e.stopPropagation()}
-          style={{ cursor: 'crosshair' }}
+          style={{ cursor: generating ? 'default' : 'crosshair' }}
         >
           {weights.every(w => w < 0.001) && (
             <text

@@ -162,41 +162,6 @@ body {
   overflow: hidden;
 }
 
-.canvas-mode-tabs {
-  position: absolute;
-  top: 14px;
-  left: 14px;
-  z-index: 100;
-  display: flex;
-  flex-direction: row;
-  gap: 6px;
-}
-
-.mode-tab {
-  padding: 6px 12px;
-  font-size: 11px;
-  font-weight: 600;
-  background: var(--surface);
-  color: var(--text-muted);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  cursor: pointer;
-  transition: all 0.15s;
-  white-space: nowrap;
-}
-.mode-tab:hover:not(:disabled) {
-  background: var(--accent-dim);
-  color: var(--text);
-}
-.mode-tab.active {
-  background: var(--accent-dim);
-  border-color: var(--accent);
-  color: var(--accent);
-}
-.mode-tab:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
 
 .panels {
   flex: 1;
@@ -259,10 +224,44 @@ body {
   transition: max-height 0.2s ease, opacity 0.2s ease, padding 0.2s ease;
 }
 .generate-area:hover .panel-settings {
-  max-height: 200px;
+  max-height: 400px;
   opacity: 1;
   padding: 8px 10px;
   border-color: var(--border);
+}
+
+.settings-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 8px 0;
+}
+
+.stencil-settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.stencil-toggle-btn {
+  padding: 3px 10px;
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.stencil-toggle-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.stencil-toggle-btn.active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .field-label {
@@ -1012,6 +1011,46 @@ body {
   min-width: 28px;
   text-align: right;
   flex-shrink: 0;
+}
+
+.directional-summary {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-top: 1px solid var(--border);
+  padding-top: 6px;
+}
+.directional-summary-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--text-muted);
+  min-width: 0;
+}
+.directional-summary-from,
+.directional-summary-to {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.directional-summary-to {
+  text-align: right;
+}
+.directional-summary-arrow {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+.directional-summary-scale {
+  font-size: 9px;
+  color: var(--accent);
+  flex-shrink: 0;
+  min-width: 28px;
+  text-align: right;
 }
 
 .palette-resize-handle {
@@ -1766,5 +1805,4 @@ body {
   .logo          { font-size: 1.6rem; }
   .logo-subtitle { display: none; }
   .uoft-logo     { height: 42px; }
-  .mode-tab      { font-size: 10px; padding: 5px 2px; }
 }

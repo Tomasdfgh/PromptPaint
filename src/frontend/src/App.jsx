@@ -10,11 +10,45 @@ import './App.css';
 
 const socket = io({ path: '/socket.io' });
 
+// Composite a new RGBA image on top of a base image using an offscreen canvas.
+// Returns a base64 PNG string. If no base, returns the new image as-is.
+function compositeImages(baseB64, topB64) {
+  return new Promise((resolve) => {
+    if (!baseB64) { resolve(topB64); return; }
+    const canvas = document.createElement('canvas');
+    const baseImg = new Image();
+    const topImg  = new Image();
+    let loaded = 0;
+    const onLoad = () => {
+      if (++loaded < 2) return;
+      canvas.width  = baseImg.naturalWidth;
+      canvas.height = baseImg.naturalHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(baseImg, 0, 0);
+      ctx.drawImage(topImg,  0, 0);
+      resolve(canvas.toDataURL('image/png').split(',')[1]);
+    };
+    baseImg.onload = onLoad;
+    topImg.onload  = onLoad;
+    baseImg.src = `data:image/png;base64,${baseB64}`;
+    topImg.src  = `data:image/png;base64,${topB64}`;
+  });
+}
+
 const DEFAULT_PARAMS = {
   prompt: '',
   prompt_a: '',
   prompt_b: '',
-  prompts: [{ text: '', color: '#e8455c', weight: 1 }, { text: '', color: '#4fa3e8', weight: 1 }],
+  prompts: [
+    { text: '', color: '#e8455c', weight: 1 },
+    { text: '', color: '#4fa3e8', weight: 1 },
+    { text: '', color: '#33e65c', weight: 1 },
+  ],
+  directional_prompts: [
+    { from: '', to: '', scale: 1 },
+    { from: '', to: '', scale: 1 },
+  ],
   from_concept: '',
   to_concept: '',
   alpha: 0.5,
@@ -28,7 +62,7 @@ const DEFAULT_PARAMS = {
 };
 
 export default function App() {
-  const [mode,        setMode]        = useState('standard');
+  const [stencilActive, setStencilActive] = useState(false);
   const [params,      setParams]      = useState(DEFAULT_PARAMS);
   const [generating,  setGenerating]  = useState(false);
   const [step,        setStep]        = useState(0);
@@ -52,6 +86,8 @@ export default function App() {
   const totalStepsRef = useRef(0);
   const imageB64Ref      = useRef(null);
   const stepPreviewsRef  = useRef({});
+  const isStencilGenRef    = useRef(false);
+  const preStencilImageRef = useRef(null);
   useEffect(() => { imageB64Ref.current = imageB64; }, [imageB64]);
   useEffect(() => { stepPreviewsRef.current = stepPreviews; }, [stepPreviews]);
   const navigate = useNavigate();
@@ -90,20 +126,34 @@ export default function App() {
       setTotalSteps(data.total);
       totalStepsRef.current = data.total;
       if (data.preview) {
-        setImageB64(data.preview);
-        setStepPreviews(prev => ({ ...prev, [data.step]: data.preview }));
+        if (isStencilGenRef.current) {
+          compositeImages(preStencilImageRef.current, data.preview).then(composited => {
+            setImageB64(composited);
+            setStepPreviews(prev => ({ ...prev, [data.step]: composited }));
+          });
+        } else {
+          setImageB64(data.preview);
+          setStepPreviews(prev => ({ ...prev, [data.step]: data.preview }));
+        }
       }
     });
 
     socket.on('result', (data) => {
-      setImageB64(data.image);
-      setStepPreviews(prev => ({ ...prev, [totalStepsRef.current]: data.image }));
-      setGenerationChain(prev => prev.map((n, i) =>
-        i === prev.length - 1 ? { ...n, toStep: totalStepsRef.current } : n
-      ));
-      setGenerating(false);
-      setQueuePos(null);
-      setStep(0);
+      const finalize = (image) => {
+        setImageB64(image);
+        setStepPreviews(prev => ({ ...prev, [totalStepsRef.current]: image }));
+        setGenerationChain(prev => prev.map((n, i) =>
+          i === prev.length - 1 ? { ...n, toStep: totalStepsRef.current } : n
+        ));
+        setGenerating(false);
+        setQueuePos(null);
+        setStep(0);
+      };
+      if (isStencilGenRef.current) {
+        compositeImages(preStencilImageRef.current, data.image).then(finalize);
+      } else {
+        finalize(data.image);
+      }
     });
 
 
@@ -136,11 +186,12 @@ export default function App() {
     if (generating) return;
 
     const prompts = params.prompts || [];
-    const effectiveMode = (mode === 'standard' && prompts.length > 1) ? 'mixing' : mode;
+    const hasStrokes = strokes.length > 0;
+    const effectiveMode = hasStrokes ? 'stencil' : (prompts.length > 1 ? 'mixing' : 'standard');
 
-    // In standard mixing mode, require a palette selection
+    // Require a palette selection for non-stencil mixing
     const hasWeights = paletteWeights.length === prompts.length && paletteWeights.some(w => w > 0.001);
-    if (effectiveMode === 'mixing' && !hasWeights) {
+    if (!hasWeights) {
       console.warn('[PromptPaint] No palette selection — place the cursor on a prompt dot or mix before generating.');
       return;
     }
@@ -154,9 +205,9 @@ export default function App() {
       ...params,
       prompts: weightedPrompts,
       mode: effectiveMode,
-      prompt: mode === 'standard' ? (prompts[0]?.text || '') : params.prompt,
-      strokes: mode === 'stencil' ? strokes : undefined,
-      image_b64: mode === 'stencil' ? (imageB64Ref.current || '') : undefined,
+      prompt: prompts[0]?.text || '',
+      strokes: hasStrokes ? strokes : undefined,
+      image_b64: hasStrokes ? (imageB64Ref.current || '') : undefined,
       resume_step: resumeStep ?? -1,
     };
 
@@ -178,17 +229,20 @@ export default function App() {
         return [...trimmed, { pos: paletteCursorPos, fromStep, toStep: null }];
       });
     }
+    isStencilGenRef.current    = hasStrokes;
+    preStencilImageRef.current = hasStrokes ? imageB64Ref.current : null;
     setScrubImage(null);
     setResumeStep(null);
     setGenerating(true);
     setStep(resumeStep ?? 0);
     setTotalSteps(params.steps || 40);
     totalStepsRef.current = params.steps || 40;
-    if (resumeStep === null && mode !== 'stencil') setImageB64(null);
-    else setImageB64(stepPreviewsRef.current[resumeStep] ?? null);
+    if (resumeStep === null && !hasStrokes) setImageB64(null);
+    else if (resumeStep !== null) setImageB64(stepPreviewsRef.current[resumeStep] ?? null);
+    // stencil fresh generation: leave imageB64 unchanged
     setStatusMsg('Starting…');
     socket.emit('generate', payload);
-  }, [generating, mode, params, strokes, paletteWeights, resumeStep, paletteCursorPos]);
+  }, [generating, params, strokes, paletteWeights, resumeStep, paletteCursorPos]);
 
   const handleScrub = useCallback((s) => {
     if (s >= totalSteps) { setResumeStep(null); setScrubImage(null); return; }
@@ -201,10 +255,6 @@ export default function App() {
     setScrubImage(null);
   }, []);
 
-  const handleModeChange = useCallback((newMode) => {
-    setMode(newMode);
-    setStatusMsg('');
-  }, []);
 
   // Keyboard shortcut: Cmd/Ctrl+Enter to generate
   useEffect(() => {
@@ -271,13 +321,13 @@ export default function App() {
         {showAbout   && <About   onClose={() => navigate('/')} />}
         {showContact && <Contact onClose={() => navigate('/')} />}
         <Sidebar
-          mode={mode}               onModeChange={handleModeChange}
           params={params}           onParamsChange={setParams}
           onGenerate={handleGenerate}
           generating={generating}
           queuePos={queuePos}
           step={step}               totalSteps={totalSteps}
           brushRadius={brushRadius} onBrushRadiusChange={setBrushRadius}
+          stencilActive={stencilActive} onStencilActiveChange={setStencilActive}
           onPaletteWeightsChange={setPaletteWeights}
           onPaletteCursorPosChange={setPaletteCursorPos}
           generationChain={generationChain}
@@ -288,20 +338,6 @@ export default function App() {
         />
 
         <section className="canvas-area">
-
-          {/* Mode tabs — top-left of canvas area */}
-          <div className="canvas-mode-tabs">
-            {['standard', 'stencil'].map(m => (
-              <button
-                key={m}
-                className={`mode-tab ${mode === m ? 'active' : ''}`}
-                onClick={() => handleModeChange(m)}
-                disabled={generating}
-              >
-                {m.charAt(0).toUpperCase() + m.slice(1)}
-              </button>
-            ))}
-          </div>
 
           {/* Hamburger menu — top-right of canvas area */}
           <div className="canvas-menu-container" ref={menuRef}>
@@ -344,7 +380,7 @@ export default function App() {
 
           <Canvas
             imageB64={scrubImage ?? imageB64}
-            stencilMode={mode === 'stencil'}
+            stencilMode={stencilActive}
             generating={generating}
             brushRadius={brushRadius}
             onStrokesChange={setStrokes}

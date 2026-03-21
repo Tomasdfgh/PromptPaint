@@ -149,7 +149,10 @@ export default function Canvas({ imageB64, stencilMode, generating, brushRadius,
       return;
     }
     const img = new Image();
-    img.onload = () => ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    img.onload = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    };
     img.src = `data:image/png;base64,${imageB64}`;
   }, [imageB64]);
 
@@ -307,8 +310,8 @@ export default function Canvas({ imageB64, stencilMode, generating, brushRadius,
 
         {stencilMode && (
           <div className="stencil-toolbar">
-            <button className="btn-small" onClick={clearStrokes}>Clear mask</button>
-            <span className="stencil-hint">Paint region B on the canvas</span>
+            <button className="btn-small" onClick={clearStrokes}>Clear strokes</button>
+            <span className="stencil-hint">Brush the area to regenerate</span>
           </div>
         )}
 

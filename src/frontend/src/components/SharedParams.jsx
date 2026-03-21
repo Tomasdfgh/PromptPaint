@@ -1,8 +1,7 @@
 import React from 'react';
 import { sliderBg } from './sidebarUtils';
 
-function SharedParams({ params, set, mode }) {
-  const isStencil = mode === 'stencil';
+function SharedParams({ params, set, brushRadius, onBrushRadiusChange, stencilActive, onStencilActiveChange }) {
   return (
     <section className="panel panel-settings">
       <label className="field-label" style={{ marginBottom: 6 }}>Generation settings</label>
@@ -43,7 +42,37 @@ function SharedParams({ params, set, mode }) {
             style={sliderBg(params.single_stroke ?? 20, 10, 100)}
           />
         </div>
-        <div className="slider-row" style={!isStencil ? { opacity: 0.35, pointerEvents: 'none' } : {}}>
+      </div>
+
+      <div className="settings-divider" />
+
+      {/* Stencil controls */}
+      <div className="stencil-settings-row">
+        <label className="field-label">Stencil</label>
+        <button
+          type="button"
+          className={`stencil-toggle-btn${stencilActive ? ' active' : ''}`}
+          onClick={() => onStencilActiveChange(!stencilActive)}
+        >
+          {stencilActive ? 'On' : 'Off'}
+        </button>
+      </div>
+
+      <div className="sliders-grid" style={!stencilActive ? { opacity: 0.35, pointerEvents: 'none' } : {}}>
+        <div className="slider-row">
+          <label className="field-label">
+            Brush radius — <span className="slider-value">{brushRadius}px</span>
+          </label>
+          <input
+            type="range" min={5} max={80} step={1}
+            value={brushRadius}
+            onChange={e => onBrushRadiusChange(parseInt(e.target.value))}
+            className="slider"
+            style={sliderBg(brushRadius, 5, 80)}
+            disabled={!stencilActive}
+          />
+        </div>
+        <div className="slider-row">
           <label className="field-label">
             Overcoat — <span className="slider-value">{params.overcoat ?? 100}%</span>
           </label>
@@ -53,7 +82,7 @@ function SharedParams({ params, set, mode }) {
             onChange={e => set('overcoat', parseInt(e.target.value))}
             className="slider"
             style={sliderBg(params.overcoat ?? 100, 0, 100)}
-            disabled={!isStencil}
+            disabled={!stencilActive}
           />
         </div>
       </div>

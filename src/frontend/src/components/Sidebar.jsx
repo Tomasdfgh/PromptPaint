@@ -5,17 +5,16 @@ import PromptListPanel from './PromptListPanel';
 import PromptPalette from './PromptPalette';
 import PromptCompositionPanel from './PromptCompositionPanel';
 import DirectionalPromptsPanel from './DirectionalPromptsPanel';
-import StencilPanel from './StencilPanel';
 import ScrubBar from './ScrubBar';
 import SharedParams from './SharedParams';
 
 
 export default function Sidebar({
-  mode, onModeChange,
   params, onParamsChange,
   onGenerate,
   generating, queuePos, step, totalSteps,
   brushRadius, onBrushRadiusChange,
+  stencilActive, onStencilActiveChange,
   onPaletteWeightsChange, onPaletteCursorPosChange,
   generationChain,
   stepPreviews, resumeStep, onScrub, onUnscrub,
@@ -30,25 +29,22 @@ export default function Sidebar({
 
   const prompts = params.prompts?.length > 0
     ? params.prompts
-    : [{ text: '', color: promptHue(0), weight: 1 }, { text: '', color: promptHue(1), weight: 1 }];
+    : [0, 1, 2].map(i => ({ text: '', color: promptHue(i), weight: 1 }));
 
   const hasSelection = paletteWeights.some(w => w > 0.001);
-  const needsSelection = mode === 'standard' && !hasSelection;
+  const needsSelection = !hasSelection;
 
   const handleGenerateWithLog = () => {
     const hasSelection = paletteWeights.some(w => w > 0.001);
     console.group('%c[PromptPaint] Generate', 'color:#007acc;font-weight:700');
-    console.log('Mode:', mode);
-    if (mode === 'standard') {
-      if (hasSelection) {
-        console.log('Prompt composition:');
-        prompts.forEach((p, i) => {
-          const pct = Math.round((paletteWeights[i] ?? 0) * 100);
-          console.log(`  %c■%c Prompt ${i + 1} (${pct}%): "${p.text}"`, `color:${p.color}`, 'color:inherit');
-        });
-      } else {
-        console.log('No palette selection — no composition weights');
-      }
+    if (hasSelection) {
+      console.log('Prompt composition:');
+      prompts.forEach((p, i) => {
+        const pct = Math.round((paletteWeights[i] ?? 0) * 100);
+        console.log(`  %c■%c Prompt ${i + 1} (${pct}%): "${p.text}"`, `color:${p.color}`, 'color:inherit');
+      });
+    } else {
+      console.log('No palette selection — no composition weights');
     }
     console.groupEnd();
     onGenerate();
@@ -57,48 +53,33 @@ export default function Sidebar({
   return (
     <aside className="sidebar">
 
-      {/* Mode-specific panels */}
       <div className="panels">
+        <PromptListPanel params={params} set={set} />
 
-        {mode === 'standard' && (
-          <PromptListPanel params={params} set={set} />
-        )}
+        <PromptPalette
+          prompts={prompts}
+          onWeightsChange={handlePaletteWeights}
+          onCursorPosChange={onPaletteCursorPosChange}
+          historyChain={generationChain}
+          resumeStep={resumeStep}
+          generating={generating}
+        />
 
-        {mode === 'standard' && (
-          <PromptPalette
-            prompts={prompts}
-            onWeightsChange={handlePaletteWeights}
-            onCursorPosChange={onPaletteCursorPosChange}
-            historyChain={generationChain}
-            resumeStep={resumeStep}
-            generating={generating}
-          />
-        )}
-
-        {mode === 'standard' && (
-          <DirectionalPromptsPanel params={params} set={set} />
-        )}
-
-        {mode === 'stencil' && (
-          <StencilPanel
-            params={params} set={set}
-            brushRadius={brushRadius}
-            onBrushRadiusChange={onBrushRadiusChange}
-          />
-        )}
-
+        <DirectionalPromptsPanel params={params} set={set} />
       </div>
 
       {/* Bottom: generation settings + progress + actions */}
       <div className="sidebar-bottom">
 
-        {mode === 'standard' && (
-          <PromptCompositionPanel prompts={prompts} weights={paletteWeights} />
-        )}
+        <PromptCompositionPanel prompts={prompts} weights={paletteWeights} directionalPrompts={params.directional_prompts} />
 
         {/* Generate area: hover reveals settings above the button */}
         <div className="generate-area">
-          <SharedParams params={params} set={set} mode={mode} />
+          <SharedParams
+            params={params} set={set}
+            brushRadius={brushRadius} onBrushRadiusChange={onBrushRadiusChange}
+            stencilActive={stencilActive} onStencilActiveChange={onStencilActiveChange}
+          />
 
           {/* Action buttons */}
           <div className="action-row">
