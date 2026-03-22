@@ -7,14 +7,13 @@ import PromptCompositionPanel from './PromptCompositionPanel';
 import DirectionalPromptsPanel from './DirectionalPromptsPanel';
 import ScrubBar from './ScrubBar';
 import SharedParams from './SharedParams';
-
-
 export default function Sidebar({
   params, onParamsChange,
   onGenerate,
   generating, queuePos, step, totalSteps,
   brushRadius, onBrushRadiusChange,
   stencilActive, onStencilActiveChange,
+  hasStrokes,
   onPaletteWeightsChange, onPaletteCursorPosChange,
   generationChain,
   stepPreviews, resumeStep, onScrub, onUnscrub,
@@ -45,6 +44,15 @@ export default function Sidebar({
       });
     } else {
       console.log('No palette selection — no composition weights');
+    }
+    const directional = params.directional_prompts || [];
+    console.log('Directional prompts:');
+    if (directional.length === 0) {
+      console.log('  (none)');
+    } else {
+      directional.forEach((d, i) => {
+        console.log(`  Directional ${i + 1}: from="${d.from || ''}" to="${d.to || ''}" scale=${d.scale ?? 1}`);
+      });
     }
     console.groupEnd();
     onGenerate();
@@ -80,6 +88,12 @@ export default function Sidebar({
             brushRadius={brushRadius} onBrushRadiusChange={onBrushRadiusChange}
             stencilActive={stencilActive} onStencilActiveChange={onStencilActiveChange}
           />
+
+          {/* Generation target indicator */}
+          <div className={`gen-target ${hasStrokes ? 'gen-target-stencil' : 'gen-target-canvas'}`}>
+            <span className="gen-target-dot" />
+            {hasStrokes ? 'Painting to stenciled region' : 'Painting to full canvas'}
+          </div>
 
           {/* Action buttons */}
           <div className="action-row">

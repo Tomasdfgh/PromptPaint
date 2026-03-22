@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import Sidebar from './components/Sidebar';
 import Canvas from './components/Canvas';
+import LayersPanel from './components/LayersPanel';
 import About from './components/About';
 import Contact from './components/Contact';
 import { uoftLogoDataUri } from './assets/uoftLogoBase64';
@@ -67,29 +68,48 @@ export default function App() {
   const [generating,  setGenerating]  = useState(false);
   const [step,        setStep]        = useState(0);
   const [totalSteps,  setTotalSteps]  = useState(0);
-  const [imageB64,    setImageB64]    = useState(null);
+  const [layers,      setLayers]      = useState([
+    { id: 'layer-1', name: 'Layer 1', imageB64: null, visible: true, opacity: 1,
+      stepPreviews: {}, generationChain: [], totalSteps: 0 },
+    { id: 'layer-2', name: 'Layer 2', imageB64: null, visible: true, opacity: 1,
+      stepPreviews: {}, generationChain: [], totalSteps: 0 },
+    { id: 'layer-3', name: 'Layer 3', imageB64: null, visible: true, opacity: 1,
+      stepPreviews: {}, generationChain: [], totalSteps: 0 },
+  ]);
+  const [activeLayerId, setActiveLayerId] = useState('layer-1');
   const [strokes,     setStrokes]     = useState([]);
-  const [brushRadius, setBrushRadius] = useState(20);
+  const [brushRadius, setBrushRadius] = useState(50);
   const [, setStatusMsg] = useState('');
   const [menuOpen,    setMenuOpen]    = useState(false);
   const [queuePos,    setQueuePos]    = useState(null);
   const [paletteWeights, setPaletteWeights] = useState([]);
   const [theme, setTheme] = useState(() => localStorage.getItem('pp-theme') || 'dark');
 
-  // Scrubber state
-  const [stepPreviews,      setStepPreviews]      = useState({});   // step → b64
-  const [resumeStep,        setResumeStep]        = useState(null); // step to resume from on next Paint
-  const [scrubImage,        setScrubImage]        = useState(null); // overrides imageB64 while scrubbing
-  const [paletteCursorPos,  setPaletteCursorPos]  = useState(null); // live palette cursor position
-  const [generationChain,   setGenerationChain]   = useState([]);   // [{ pos, fromStep, toStep }] history
-  const menuRef       = useRef(null);
-  const totalStepsRef = useRef(0);
-  const imageB64Ref      = useRef(null);
-  const stepPreviewsRef  = useRef({});
-  const isStencilGenRef    = useRef(false);
-  const preStencilImageRef = useRef(null);
-  useEffect(() => { imageB64Ref.current = imageB64; }, [imageB64]);
-  useEffect(() => { stepPreviewsRef.current = stepPreviews; }, [stepPreviews]);
+  // Scrubber state (UI — reset when switching layers)
+  const [resumeStep,        setResumeStep]        = useState(null);
+  const [scrubImage,        setScrubImage]        = useState(null);
+  const [paletteCursorPos,  setPaletteCursorPos]  = useState(null);
+  const menuRef          = useRef(null);
+  const totalStepsRef    = useRef(0);
+  const compositeB64Ref  = useRef(null);
+  const layersRef        = useRef(layers);
+  const isStencilGenRef      = useRef(false);
+  const preStencilImageRef   = useRef(null);
+  const generatingLayerIdRef = useRef(null);
+  const activeLayerIdRef     = useRef(activeLayerId);
+  useEffect(() => { activeLayerIdRef.current = activeLayerId; }, [activeLayerId]);
+  useEffect(() => { layersRef.current = layers; }, [layers]);
+
+  // When switching layers: reset scrub UI + restore that layer's totalSteps for ScrubBar display
+  useEffect(() => {
+    setResumeStep(null);
+    setScrubImage(null);
+    // Don't clobber totalSteps mid-generation — the progress counter belongs to the generating layer
+    if (!generating) {
+      const layer = layersRef.current.find(l => l.id === activeLayerId);
+      setTotalSteps(layer?.totalSteps ?? 0);
+    }
+  }, [activeLayerId]); // eslint-disable-line react-hooks/exhaustive-deps
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -126,28 +146,44 @@ export default function App() {
       setTotalSteps(data.total);
       totalStepsRef.current = data.total;
       if (data.preview) {
+        const genLayerId = generatingLayerIdRef.current;
+        const step = data.step;
+        const applyPreview = (img) => {
+          setLayers(prev => prev.map(l => l.id === genLayerId ? {
+            ...l,
+            imageB64: img,
+            stepPreviews: { ...l.stepPreviews, [step]: img },
+          } : l));
+        };
         if (isStencilGenRef.current) {
-          compositeImages(preStencilImageRef.current, data.preview).then(composited => {
-            setImageB64(composited);
-            setStepPreviews(prev => ({ ...prev, [data.step]: composited }));
-          });
+          compositeImages(preStencilImageRef.current, data.preview).then(applyPreview);
         } else {
-          setImageB64(data.preview);
-          setStepPreviews(prev => ({ ...prev, [data.step]: data.preview }));
+          applyPreview(data.preview);
         }
       }
     });
 
     socket.on('result', (data) => {
+      const genLayerId = generatingLayerIdRef.current;
+      const total = totalStepsRef.current;
       const finalize = (image) => {
-        setImageB64(image);
-        setStepPreviews(prev => ({ ...prev, [totalStepsRef.current]: image }));
-        setGenerationChain(prev => prev.map((n, i) =>
-          i === prev.length - 1 ? { ...n, toStep: totalStepsRef.current } : n
-        ));
+        setLayers(prev => prev.map(l => {
+          if (l.id !== genLayerId) return l;
+          return {
+            ...l,
+            imageB64: image,
+            stepPreviews: { ...l.stepPreviews, [total]: image },
+            generationChain: l.generationChain.map((n, i) =>
+              i === l.generationChain.length - 1 ? { ...n, toStep: total } : n
+            ),
+            totalSteps: total,
+          };
+        }));
+        setTotalSteps(total);
         setGenerating(false);
         setQueuePos(null);
         setStep(0);
+        generatingLayerIdRef.current = null;
       };
       if (isStencilGenRef.current) {
         compositeImages(preStencilImageRef.current, data.image).then(finalize);
@@ -160,6 +196,7 @@ export default function App() {
     socket.on('error', (data) => {
       setGenerating(false);
       setQueuePos(null);
+      generatingLayerIdRef.current = null;
       console.error('Generation error:', data?.message ?? data);
     });
 
@@ -201,54 +238,110 @@ export default function App() {
       weight: hasWeights ? paletteWeights[i] : 1,
     }));
 
+    const activeId = activeLayerIdRef.current;
+    const activeLayer = layersRef.current.find(l => l.id === activeId);
+    const activeLayerImage = activeLayer?.imageB64 || '';
+
     const payload = {
       ...params,
       prompts: weightedPrompts,
       mode: effectiveMode,
       prompt: prompts[0]?.text || '',
       strokes: hasStrokes ? strokes : undefined,
-      image_b64: hasStrokes ? (imageB64Ref.current || '') : undefined,
+      image_b64: hasStrokes ? activeLayerImage : undefined,
       resume_step: resumeStep ?? -1,
     };
 
-    // On fresh generation clear all previews; on resume keep steps up to resumeStep
-    if (resumeStep === null) {
-      setStepPreviews({});
-    } else {
-      setStepPreviews(prev => Object.fromEntries(
-        Object.entries(prev).filter(([k]) => Number(k) <= resumeStep)
-      ));
-    }
+    // Update this layer's stepPreviews and generationChain
+    setLayers(prev => prev.map(l => {
+      if (l.id !== activeId) return l;
+      const trimmedPreviews = resumeStep === null
+        ? {}
+        : Object.fromEntries(Object.entries(l.stepPreviews).filter(([k]) => Number(k) <= resumeStep));
+      let newChain = l.generationChain;
+      if (paletteCursorPos) {
+        const fromStep = resumeStep ?? 0;
+        newChain = [
+          ...l.generationChain
+            .filter(n => n.fromStep < fromStep)
+            .map(n => (n.toStep === null || n.toStep > fromStep) ? { ...n, toStep: fromStep } : n),
+          { pos: paletteCursorPos, fromStep, toStep: null },
+        ];
+      }
+      return { ...l, stepPreviews: trimmedPreviews, generationChain: newChain };
+    }));
 
-    if (paletteCursorPos) {
-      const fromStep = resumeStep ?? 0;
-      setGenerationChain(prev => {
-        const trimmed = prev
-          .filter(n => n.fromStep < fromStep)
-          .map(n => (n.toStep === null || n.toStep > fromStep) ? { ...n, toStep: fromStep } : n);
-        return [...trimmed, { pos: paletteCursorPos, fromStep, toStep: null }];
-      });
-    }
-    isStencilGenRef.current    = hasStrokes;
-    preStencilImageRef.current = hasStrokes ? imageB64Ref.current : null;
+    isStencilGenRef.current      = hasStrokes;
+    preStencilImageRef.current   = hasStrokes ? activeLayerImage : null;
+    generatingLayerIdRef.current = activeLayerIdRef.current;
     setScrubImage(null);
     setResumeStep(null);
     setGenerating(true);
     setStep(resumeStep ?? 0);
     setTotalSteps(params.steps || 40);
     totalStepsRef.current = params.steps || 40;
-    if (resumeStep === null && !hasStrokes) setImageB64(null);
-    else if (resumeStep !== null) setImageB64(stepPreviewsRef.current[resumeStep] ?? null);
-    // stencil fresh generation: leave imageB64 unchanged
+
+    if (resumeStep === null && !hasStrokes) {
+      setLayers(prev => prev.map(l => l.id === activeId ? { ...l, imageB64: null } : l));
+    } else if (resumeStep !== null) {
+      const resumeImg = activeLayer?.stepPreviews?.[resumeStep] ?? null;
+      setLayers(prev => prev.map(l => l.id === activeId ? { ...l, imageB64: resumeImg } : l));
+    }
+    // stencil fresh generation: leave active layer imageB64 unchanged
     setStatusMsg('Starting…');
     socket.emit('generate', payload);
   }, [generating, params, strokes, paletteWeights, resumeStep, paletteCursorPos]);
 
+  // ---------------------------------------------------------------------------
+  // Layer management
+  // ---------------------------------------------------------------------------
+  const addLayer = useCallback((name) => {
+    const id = `layer-${Date.now()}`;
+    setLayers(prev => [...prev, {
+      id, name: name || `Layer ${prev.length + 1}`,
+      imageB64: null, visible: true, opacity: 1,
+      stepPreviews: {}, generationChain: [], totalSteps: 0,
+    }]);
+    setActiveLayerId(id);
+  }, []);
+
+  const removeLayer = useCallback((id) => {
+    setLayers(prev => {
+      if (prev.length <= 1) return prev;
+      const next = prev.filter(l => l.id !== id);
+      setActiveLayerId(cur => {
+        if (cur !== id) return cur;
+        const idx = prev.findIndex(l => l.id === id);
+        return next[Math.min(idx, next.length - 1)].id;
+      });
+      return next;
+    });
+  }, []);
+
+  const toggleLayerVisible = useCallback((id) => {
+    setLayers(prev => prev.map(l => l.id === id ? { ...l, visible: !l.visible } : l));
+  }, []);
+
+  const handleLayerUpdate = useCallback((id, b64) => {
+    setLayers(prev => prev.map(l => l.id === id ? { ...l, imageB64: b64 } : l));
+  }, []);
+
+  const reorderLayers = useCallback((fromIndex, toIndex) => {
+    setLayers(prev => {
+      const next = [...prev];
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
+      return next;
+    });
+  }, []);
+
   const handleScrub = useCallback((s) => {
-    if (s >= totalSteps) { setResumeStep(null); setScrubImage(null); return; }
+    const activeLayer = layersRef.current.find(l => l.id === activeLayerIdRef.current);
+    const layerTotal = activeLayer?.totalSteps ?? 0;
+    if (s >= layerTotal) { setResumeStep(null); setScrubImage(null); return; }
     setResumeStep(s);
-    setScrubImage(stepPreviews[s] ?? null);
-  }, [stepPreviews, totalSteps]);
+    setScrubImage(activeLayer?.stepPreviews?.[s] ?? null);
+  }, []);
 
   const handleUnscrub = useCallback(() => {
     setResumeStep(null);
@@ -328,10 +421,11 @@ export default function App() {
           step={step}               totalSteps={totalSteps}
           brushRadius={brushRadius} onBrushRadiusChange={setBrushRadius}
           stencilActive={stencilActive} onStencilActiveChange={setStencilActive}
+          hasStrokes={strokes.length > 0}
           onPaletteWeightsChange={setPaletteWeights}
           onPaletteCursorPosChange={setPaletteCursorPos}
-          generationChain={generationChain}
-          stepPreviews={stepPreviews}
+          generationChain={layers.find(l => l.id === activeLayerId)?.generationChain ?? []}
+          stepPreviews={layers.find(l => l.id === activeLayerId)?.stepPreviews ?? {}}
           resumeStep={resumeStep}
           onScrub={handleScrub}
           onUnscrub={handleUnscrub}
@@ -339,7 +433,18 @@ export default function App() {
 
         <section className="canvas-area">
 
-          {/* Hamburger menu — top-right of canvas area */}
+          {/* Layers column — top-right of canvas area */}
+          <LayersPanel
+            layers={layers}
+            activeLayerId={activeLayerId}
+            onSetActive={setActiveLayerId}
+            onAdd={addLayer}
+            onRemove={removeLayer}
+            onToggleVisible={toggleLayerVisible}
+            onReorder={reorderLayers}
+          />
+
+          {/* Hamburger menu — bottom-left of canvas area */}
           <div className="canvas-menu-container" ref={menuRef}>
             <button className="hamburger-menu" onClick={() => setMenuOpen(o => !o)}>
               <span></span>
@@ -379,8 +484,14 @@ export default function App() {
           </div>
 
           <Canvas
-            imageB64={scrubImage ?? imageB64}
+            layers={layers}
+            activeLayerId={activeLayerId}
+            activeLayerOverride={scrubImage}
+            onLayerUpdate={handleLayerUpdate}
+            onCompositeChange={(b64) => { compositeB64Ref.current = b64; }}
+            isPreview={generating || !!scrubImage}
             stencilMode={stencilActive}
+            onStencilActiveChange={setStencilActive}
             generating={generating}
             brushRadius={brushRadius}
             onStrokesChange={setStrokes}

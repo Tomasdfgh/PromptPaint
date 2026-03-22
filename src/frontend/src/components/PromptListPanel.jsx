@@ -58,9 +58,10 @@ function ColorPicker({ color, onChange, index }) {
   );
 }
 
-function PromptRow({ prompt, index, onUpdate, onRemove, showRemove, showWeight, totalWeight }) {
+function PromptRow({ prompt, index, onUpdate, onRemove, showRemove, showWeight, totalWeight, autoFocus }) {
   const [editing, setEditing] = useState(!prompt.text.trim());
   const textareaRef = useRef(null);
+  const prevEditingRef = useRef(editing);
 
   const autoResize = (el) => {
     if (!el) return;
@@ -73,7 +74,9 @@ function PromptRow({ prompt, index, onUpdate, onRemove, showRemove, showWeight, 
   }, [prompt.text, editing]);
 
   useEffect(() => {
-    if (editing) textareaRef.current?.focus();
+    // Only focus when editing transitions false→true (user explicitly clicked to edit)
+    if (editing && !prevEditingRef.current) textareaRef.current?.focus();
+    prevEditingRef.current = editing;
   }, [editing]);
 
   const wordCount = prompt.text.trim() ? prompt.text.trim().split(/\s+/).filter(Boolean).length : 0;
@@ -88,6 +91,7 @@ function PromptRow({ prompt, index, onUpdate, onRemove, showRemove, showWeight, 
             ref={textareaRef}
             className={`prompt-input${editing ? '' : ' prompt-input-readonly'}`}
             rows={1}
+            autoFocus={autoFocus && !prompt.text.trim()}
             placeholder={`Prompt ${index + 1}…`}
             value={prompt.text}
             readOnly={!editing}
@@ -153,6 +157,7 @@ function PromptListPanel({ params, set }) {
             showRemove={multiPrompt}
             showWeight={multiPrompt}
             totalWeight={totalWeight}
+            autoFocus={i === 0}
           />
         ))}
       </div>

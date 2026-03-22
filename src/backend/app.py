@@ -28,6 +28,7 @@ socketio = SocketIO(
 MODEL_URL  = os.getenv('MODEL_SERVICE_URL', 'http://model:8000')
 LOGS_DIR   = os.getenv('LOGS_DIR', '/app/logs')
 CONTACT_LOG = os.path.join(LOGS_DIR, 'contact_messages.csv')
+PROMPT_LOG  = os.path.join(LOGS_DIR, 'prompt_request_logs.csv')
 
 os.makedirs(LOGS_DIR, exist_ok=True)
 
@@ -116,6 +117,27 @@ def on_generate(data):
     from flask import request as flask_request
     sid = flask_request.sid
     data['session_id'] = sid
+
+    # Log prompt composition (non-zero prompts + directional prompts)
+    try:
+        timestamp = datetime.now(timezone.utc).isoformat()
+        prompts = data.get('prompts', [])
+        active_prompts = [p for p in prompts if float(p.get('weight', 0)) > 0.001 and p.get('text', '').strip()]
+        composition = '; '.join(f'"{p["text"]}" ({round(float(p["weight"]) * 100)}%)' for p in active_prompts)
+        directional = data.get('directional_prompts', [])
+        active_dir = [d for d in directional if d.get('from', '').strip() and d.get('to', '').strip() and float(d.get('scale', 0)) != 0]
+        dir_str = '; '.join(
+            f'from="{d["from"]}" to="{d["to"]}" scale={d.get("scale",1)}'
+            for d in active_dir
+        ) or '(none)'
+        write_csv_row(
+            PROMPT_LOG,
+            ['timestamp', 'mode', 'composition', 'directional_prompts', 'steps', 'width', 'height'],
+            [timestamp, data.get('mode', ''), composition, dir_str,
+             data.get('steps', ''), data.get('width', ''), data.get('height', '')],
+        )
+    except Exception as e:
+        print(f'✗ Failed to log prompt request: {e}')
 
     def stream_generation(sid, data):
         try:

@@ -84,7 +84,13 @@ function WheelPicker({ selectedIndex, onChange }) {
   );
 }
 
-export default function Canvas({ imageB64, stencilMode, generating, brushRadius, onStrokesChange, width = 1024, height = 1024, onSizeChange }) {
+export default function Canvas({
+  layers = [], activeLayerId = null, activeLayerOverride = null,
+  onLayerUpdate, onCompositeChange,
+  isPreview, stencilMode, onStencilActiveChange,
+  generating, brushRadius, onStrokesChange,
+  width = 1024, height = 1024, onSizeChange,
+}) {
   const canvasRef   = useRef(null);
   const overlayRef  = useRef(null);
   const outerRef    = useRef(null);
@@ -92,9 +98,23 @@ export default function Canvas({ imageB64, stencilMode, generating, brushRadius,
   const paintingRef = useRef(false);
   const panStartRef = useRef(null);
 
+  // Layer compositing refs
+  const layerCanvasesRef    = useRef(new Map());
+  const overrideCanvasRef   = useRef(null);
+  const layersRef           = useRef(layers);
+  const activeLayerIdRef    = useRef(activeLayerId);
+  const onCompositeChangeRef = useRef(onCompositeChange);
+
+  useEffect(() => { layersRef.current = layers; }, [layers]);
+  useEffect(() => { activeLayerIdRef.current = activeLayerId; }, [activeLayerId]);
+  useEffect(() => { onCompositeChangeRef.current = onCompositeChange; }, [onCompositeChange]);
+
   const [zoom, setZoom]   = useState(0.8);
   const [pan,  setPan]    = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
+  const [panMode, setPanMode] = useState(true);
+  const [eraserMode, setEraserMode] = useState(false);
+  const [eraserPos, setEraserPos] = useState(null);
   const [displaySize, setDisplaySize] = useState({ w: width, h: height });
 
   const selectedIndex = ALL_SIZES.findIndex(s => s.w === width && s.h === height);
@@ -139,22 +159,93 @@ export default function Canvas({ imageB64, stencilMode, generating, brushRadius,
     setPan({ x: 0, y: 0 });
   }, [width, height]);
 
-  // Draw base image
+  // Stencil is mutually exclusive with pan and eraser
   useEffect(() => {
+    if (stencilMode) {
+      setPanMode(false);
+      setEraserMode(false);
+    }
+  }, [stencilMode]);
+
+  // Composite all visible layers onto canvasRef
+  const compositeAll = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    if (!imageB64) {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    for (const layer of layersRef.current) {
+      if (!layer.visible) continue;
+      const src = (layer.id === activeLayerIdRef.current && overrideCanvasRef.current)
+        ? overrideCanvasRef.current
+        : layerCanvasesRef.current.get(layer.id);
+      if (src) {
+        ctx.globalAlpha = layer.opacity ?? 1;
+        ctx.drawImage(src, 0, 0);
+      }
+    }
+    ctx.globalAlpha = 1;
+  }, []);
+
+  const reportComposite = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const b64 = canvas.toDataURL('image/png').split(',')[1];
+    onCompositeChangeRef.current?.(b64);
+  }, []);
+
+  // Update offscreen canvases when layers change, then recomposite
+  useEffect(() => {
+    const map = layerCanvasesRef.current;
+    for (const id of [...map.keys()]) {
+      if (!layers.find(l => l.id === id)) map.delete(id);
+    }
+    const counter = { pending: 0 };
+    for (const layer of layers) {
+      if (!map.has(layer.id)) {
+        const lc = document.createElement('canvas');
+        lc.width = width; lc.height = height;
+        map.set(layer.id, lc);
+      }
+      const lc = map.get(layer.id);
+      if (lc.width !== width || lc.height !== height) { lc.width = width; lc.height = height; }
+      lc.getContext('2d').clearRect(0, 0, lc.width, lc.height);
+      if (layer.imageB64) {
+        counter.pending++;
+        const img = new Image();
+        const b64 = layer.imageB64;
+        img.onload = () => {
+          lc.getContext('2d').drawImage(img, 0, 0, lc.width, lc.height);
+          counter.pending--;
+          if (counter.pending === 0) { compositeAll(); reportComposite(); }
+        };
+        img.src = `data:image/png;base64,${b64}`;
+      }
+    }
+    if (counter.pending === 0) { compositeAll(); reportComposite(); }
+  }, [layers, width, height, compositeAll, reportComposite]);
+
+  // Handle scrub/preview override for active layer
+  useEffect(() => {
+    if (!activeLayerOverride) {
+      overrideCanvasRef.current = null;
+      compositeAll(); reportComposite();
       return;
     }
+    const oc = document.createElement('canvas');
+    oc.width = width; oc.height = height;
     const img = new Image();
     img.onload = () => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      oc.getContext('2d').drawImage(img, 0, 0, oc.width, oc.height);
+      overrideCanvasRef.current = oc;
+      compositeAll(); reportComposite();
     };
-    img.src = `data:image/png;base64,${imageB64}`;
-  }, [imageB64]);
+    img.src = `data:image/png;base64,${activeLayerOverride}`;
+  }, [activeLayerOverride, width, height, compositeAll, reportComposite]);
+
+  // Recomposite when active layer changes (override may redirect)
+  useEffect(() => {
+    compositeAll();
+  }, [activeLayerId, compositeAll]);
 
   // Scroll to zoom
   const handleWheel = useCallback((e) => {
@@ -175,12 +266,12 @@ export default function Canvas({ imageB64, stencilMode, generating, brushRadius,
   }, []);
 
   const handlePanStart = useCallback((e) => {
-    if (e.button === 1 || (e.button === 0 && !stencilMode)) {
+    if (e.button === 1 || (e.button === 0 && panMode)) {
       e.preventDefault();
       setIsPanning(true);
       panStartRef.current = { mouseX: e.clientX, mouseY: e.clientY, panX: pan.x, panY: pan.y };
     }
-  }, [stencilMode, pan]);
+  }, [panMode, pan]);
 
   const handlePanMove = useCallback((e) => {
     if (!isPanning || !panStartRef.current) return;
@@ -208,42 +299,78 @@ export default function Canvas({ imageB64, stencilMode, generating, brushRadius,
     };
   }, []);
 
-  const paintDot = useCallback((canvas, x, y) => {
-    const rect = canvas.getBoundingClientRect();
-    const r = brushRadius * (canvas.width / rect.width);
+  const applyStroke = useCallback((canvas, x, y) => {
+    const r = brushRadius * (canvas.width / canvas.getBoundingClientRect().width);
     const ctx = canvas.getContext('2d');
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(59, 130, 246, 0.45)';
     ctx.fill();
+    return r;
   }, [brushRadius]);
 
+  const eraseAt = useCallback((x, y) => {
+    const canvas = canvasRef.current;
+    const overlay = overlayRef.current;
+    if (!canvas) return;
+    const r = brushRadius * (canvas.width / canvas.getBoundingClientRect().width);
+    // Erase from active layer's offscreen canvas + stencil overlay
+    const activeCanvas = layerCanvasesRef.current.get(activeLayerIdRef.current);
+    for (const c of [activeCanvas, overlay]) {
+      if (!c) continue;
+      const ctx = c.getContext('2d');
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.clearRect(x - r - 1, y - r - 1, r * 2 + 2, r * 2 + 2);
+      ctx.restore();
+    }
+    compositeAll();
+  }, [brushRadius, compositeAll]);
+
   const handleMouseDown = useCallback((e) => {
-    if (!stencilMode || e.button !== 0) return;
+    if (e.button !== 0 || (!stencilMode && !eraserMode)) return;
+    if (eraserMode && isPreview) return;
     paintingRef.current = true;
     const canvas = overlayRef.current;
     const coords = toCanvasCoords(canvas, e.clientX, e.clientY);
-    paintDot(canvas, coords.x, coords.y);
-    const scaledRadius = brushRadius * (canvas.width / canvas.getBoundingClientRect().width);
-    strokesRef.current.push({ x: coords.x, y: coords.y, radius: scaledRadius });
-    onStrokesChange([...strokesRef.current]);
-  }, [stencilMode, brushRadius, toCanvasCoords, paintDot, onStrokesChange]);
+    if (eraserMode) {
+      eraseAt(coords.x, coords.y);
+    } else {
+      const r = applyStroke(canvas, coords.x, coords.y);
+      strokesRef.current.push({ x: coords.x, y: coords.y, radius: r });
+      onStrokesChange([...strokesRef.current]);
+    }
+  }, [stencilMode, eraserMode, isPreview, toCanvasCoords, applyStroke, eraseAt, onStrokesChange]);
 
   const handleMouseMove = useCallback((e) => {
     if (isPanning) { handlePanMove(e); return; }
-    if (!stencilMode || !paintingRef.current) return;
+    if ((!stencilMode && !eraserMode) || !paintingRef.current) return;
     const canvas = overlayRef.current;
     const coords = toCanvasCoords(canvas, e.clientX, e.clientY);
-    paintDot(canvas, coords.x, coords.y);
-    const scaledRadius = brushRadius * (canvas.width / canvas.getBoundingClientRect().width);
-    strokesRef.current.push({ x: coords.x, y: coords.y, radius: scaledRadius });
-    onStrokesChange([...strokesRef.current]);
-  }, [stencilMode, brushRadius, toCanvasCoords, paintDot, onStrokesChange, isPanning, handlePanMove]);
+    if (eraserMode) {
+      eraseAt(coords.x, coords.y);
+    } else {
+      const r = applyStroke(canvas, coords.x, coords.y);
+      strokesRef.current.push({ x: coords.x, y: coords.y, radius: r });
+      onStrokesChange([...strokesRef.current]);
+    }
+  }, [stencilMode, eraserMode, toCanvasCoords, applyStroke, eraseAt, onStrokesChange, isPanning, handlePanMove]);
 
   const handleMouseUp = useCallback(() => {
+    if (paintingRef.current && eraserMode) {
+      const id = activeLayerIdRef.current;
+      const lc = layerCanvasesRef.current.get(id);
+      if (lc) {
+        const b64 = lc.toDataURL('image/png').split(',')[1];
+        onLayerUpdate?.(id, b64);
+        reportComposite();
+      }
+    }
     paintingRef.current = false;
     handlePanEnd();
-  }, [handlePanEnd]);
+  }, [eraserMode, onLayerUpdate, reportComposite, handlePanEnd]);
 
   const clearStrokes = useCallback(() => {
     const canvas = overlayRef.current;
@@ -253,11 +380,16 @@ export default function Canvas({ imageB64, stencilMode, generating, brushRadius,
     onStrokesChange([]);
   }, [onStrokesChange]);
 
-  // Clear the brush overlay when stencil generation begins
+  // Clear the brush overlay when generation begins (if there are strokes)
   useEffect(() => {
-    if (!stencilMode || !generating) return;
+    if (!generating || strokesRef.current.length === 0) return;
     clearStrokes();
-  }, [generating, stencilMode, clearStrokes]);
+  }, [generating, clearStrokes]);
+
+  // Clear strokes when switching active layer
+  useEffect(() => {
+    clearStrokes();
+  }, [activeLayerId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Attach wheel as non-passive to canvas outer
   useEffect(() => {
@@ -268,11 +400,14 @@ export default function Canvas({ imageB64, stencilMode, generating, brushRadius,
   }, [handleWheel]);
 
   const transform = `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`;
+  const allHidden = layers.length > 0 && layers.every(l => !l.visible);
+  const showEmpty = allHidden || !layers.some(l => l.visible && l.imageB64);
 
   return (
     <div
       ref={outerRef}
       className="canvas-outer"
+      style={{ cursor: isPanning ? 'grabbing' : panMode ? 'grab' : 'default' }}
       onMouseDown={handlePanStart}
       onMouseMove={handlePanMove}
       onMouseUp={handlePanEnd}
@@ -280,13 +415,15 @@ export default function Canvas({ imageB64, stencilMode, generating, brushRadius,
     >
       <div
         className="canvas-wrapper"
-        style={{ transform, width: displaySize.w, height: displaySize.h }}
+        style={{ transform, width: displaySize.w, height: displaySize.h, cursor: eraserPos ? 'none' : undefined, display: allHidden ? 'none' : undefined }}
+        onMouseMove={(e) => { if (eraserMode) setEraserPos({ x: e.clientX, y: e.clientY }); }}
+        onMouseLeave={() => setEraserPos(null)}
       >
         <canvas ref={canvasRef} className="canvas-base" width={width} height={height} />
 
         <canvas
           ref={overlayRef}
-          className={`canvas-overlay ${stencilMode ? 'active' : ''}`}
+          className={`canvas-overlay ${stencilMode ? 'active' : ''} ${eraserMode ? 'erasing' : ''}`}
           width={width}
           height={height}
           onMouseDown={handleMouseDown}
@@ -295,7 +432,7 @@ export default function Canvas({ imageB64, stencilMode, generating, brushRadius,
           onMouseLeave={handleMouseUp}
         />
 
-        {!imageB64 && (
+        {showEmpty && (
           <div className="canvas-empty">
             <div className="canvas-empty-center">
               <img src={promptpaintLogoDataUri} alt="PromptPaint" className="canvas-logo" />
@@ -336,6 +473,90 @@ export default function Canvas({ imageB64, stencilMode, generating, brushRadius,
           );
         })}
       </div>
+
+      <div className="canvas-mode-toolbar">
+        <button
+          className={`canvas-mode-btn ${panMode ? 'active' : ''}`}
+          title="Pan mode"
+          onClick={() => {
+            if (stencilMode) onStencilActiveChange?.(false);
+            setPanMode(m => !m);
+            setEraserMode(false);
+          }}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" width="22" height="22">
+            <path d="M18 11V8a2 2 0 0 0-4 0v3"/>
+            <path d="M14 10V6a2 2 0 0 0-4 0v4"/>
+            <path d="M10 10V5a2 2 0 0 0-4 0v9"/>
+            <path d="M6 14a4 4 0 0 0 4 4h4a4 4 0 0 0 4-4v-3"/>
+          </svg>
+        </button>
+        <button
+          className={`canvas-mode-btn ${eraserMode ? 'active' : ''}`}
+          title="Eraser"
+          onClick={() => {
+            setEraserMode(m => !m);
+            setPanMode(false);
+          }}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" width="22" height="22">
+            <path d="M20 20H7L3 16l11-11 6 6-3.5 3.5"/>
+            <path d="M6.0001 17.0001L17 6"/>
+          </svg>
+        </button>
+        <button
+          className="canvas-mode-btn"
+          title="Save as PNG"
+          onClick={() => {
+            const canvas = canvasRef.current;
+            if (!canvas) return;
+            const off = document.createElement('canvas');
+            off.width = canvas.width;
+            off.height = canvas.height;
+            const ctx = off.getContext('2d');
+            ctx.drawImage(canvas, 0, 0);
+
+            const logo = new Image();
+            logo.onload = () => {
+              const pad = 16, logoSize = 22, gap = 7, fontSize = 13;
+              ctx.font = `600 ${fontSize}px system-ui, sans-serif`;
+              const tw = ctx.measureText('PromptPaint').width;
+              const x = off.width  - pad - logoSize - gap - tw;
+              const y = off.height - pad - logoSize;
+              ctx.globalAlpha = 0.65;
+              ctx.drawImage(logo, x, y, logoSize, logoSize);
+              ctx.fillStyle = '#ffffff';
+              ctx.shadowColor = 'rgba(0,0,0,0.55)';
+              ctx.shadowBlur = 4;
+              ctx.fillText('PromptPaint', x + logoSize + gap, y + logoSize * 0.72);
+              ctx.globalAlpha = 1;
+              const a = document.createElement('a');
+              a.href = off.toDataURL('image/png');
+              a.download = 'promptpaint.png';
+              a.click();
+            };
+            logo.src = promptpaintLogoDataUri;
+          }}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" width="22" height="22">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+        </button>
+      </div>
+
+      {eraserMode && eraserPos && (
+        <div
+          className="eraser-preview"
+          style={{
+            left: eraserPos.x,
+            top: eraserPos.y,
+            width: brushRadius * 2,
+            height: brushRadius * 2,
+          }}
+        />
+      )}
 
       <div className="canvas-controls">
         <div className="zoom-controls zoom-controls-sizing">

@@ -728,6 +728,38 @@ body {
 .btn-generate:hover:not(:disabled) { background: var(--accent-hover); }
 .btn-generate:disabled { opacity: 0.5; cursor: not-allowed; }
 
+.gen-target {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 8px;
+  border-radius: 20px;
+  align-self: center;
+  transition: background 0.2s, color 0.2s;
+}
+.gen-target-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.gen-target-canvas {
+  background: var(--bg-elevated, rgba(128,128,128,0.12));
+  color: var(--text-muted);
+}
+.gen-target-canvas .gen-target-dot {
+  background: var(--text-muted);
+}
+.gen-target-stencil {
+  background: rgba(59, 130, 246, 0.15);
+  color: #60a5fa;
+}
+.gen-target-stencil .gen-target-dot {
+  background: #60a5fa;
+}
+
 .generate-status-bar {
   display: flex;
   flex-direction: column;
@@ -1099,8 +1131,8 @@ body {
 
 .canvas-menu-container {
   position: absolute;
-  top: 14px;
-  right: 14px;
+  bottom: 14px;
+  left: 14px;
   z-index: 100;
 }
 
@@ -1130,8 +1162,8 @@ body {
 
 .canvas-dropdown {
   position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
+  bottom: calc(100% + 8px);
+  left: 0;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -1212,9 +1244,7 @@ body {
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  cursor: grab;
 }
-.canvas-outer:active { cursor: grabbing; }
 
 .canvas-wrapper {
   position: relative;
@@ -1257,6 +1287,20 @@ body {
   pointer-events: all;
   cursor: crosshair;
 }
+.canvas-overlay.erasing {
+  pointer-events: all;
+}
+
+.eraser-preview {
+  position: fixed;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.35);
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  z-index: 9999;
+}
 
 .canvas-empty {
   position: absolute;
@@ -1267,6 +1311,7 @@ body {
   justify-content: center;
   color: var(--text-muted);
   pointer-events: none;
+  z-index: 1;
 }
 .canvas-empty-center {
   display: flex;
@@ -1478,6 +1523,40 @@ body {
 
 .canvas-side-left  .canvas-side-btn svg,
 .canvas-side-right .canvas-side-btn svg { transform: rotate(-90deg); }
+
+
+.canvas-mode-toolbar {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  z-index: 10;
+}
+
+.canvas-mode-btn {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.canvas-mode-btn:hover {
+  background: var(--bg-elevated, var(--surface));
+  color: var(--text);
+}
+.canvas-mode-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
 
 
 .stencil-toolbar {
@@ -1772,6 +1851,203 @@ body {
   color: var(--danger);
   background: rgba(248, 113, 113, 0.1);
   border-radius: var(--radius);
+}
+
+/* ── Layers column (canvas-area, top-right) ────────────────── */
+
+.layers-column {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 6px 6px 6px;
+  width: 90px;
+  height: 40vh;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+}
+
+.layers-column-label {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin-bottom: 2px;
+  user-select: none;
+}
+
+.layers-column-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  flex: 1;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.layers-column-list::-webkit-scrollbar { width: 3px; }
+.layers-column-list::-webkit-scrollbar-track { background: transparent; }
+.layers-column-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+/* Individual layer cell */
+.layer-cell {
+  position: relative;
+  width: 100%;
+  height: 56px;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 2px solid transparent;
+  overflow: hidden;
+  flex-shrink: 0;
+  transition: border-color 0.12s, opacity 0.12s;
+  /* checkerboard background for transparent */
+  background-color: var(--surface2);
+  background-image:
+    linear-gradient(45deg, rgba(128,128,128,0.15) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(128,128,128,0.15) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(128,128,128,0.15) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(128,128,128,0.15) 75%);
+  background-size: 8px 8px;
+  background-position: 0 0, 0 4px, 4px -4px, -4px 0;
+}
+.layer-cell.active {
+  border-color: var(--accent);
+}
+.layer-cell.hidden {
+  opacity: 0.4;
+}
+.layer-cell.dragging {
+  opacity: 0.35;
+}
+.layer-cell.drop-target {
+  border-color: var(--text-muted);
+  border-style: dashed;
+}
+
+.layer-cell-thumb {
+  width: 100%;
+  height: 100%;
+}
+.layer-cell-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Layer number badge — bottom-left */
+.layer-cell-num {
+  position: absolute;
+  bottom: 2px;
+  left: 3px;
+  font-size: 8px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.75);
+  text-shadow: 0 0 3px rgba(0,0,0,0.8);
+  line-height: 1;
+  pointer-events: none;
+  user-select: none;
+}
+.layer-cell.active .layer-cell-num {
+  color: #fff;
+}
+
+/* Eye-off badge when layer is hidden */
+.layer-cell-hidden-icon {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  color: rgba(255,255,255,0.85);
+  pointer-events: none;
+  filter: drop-shadow(0 0 2px rgba(0,0,0,0.7));
+}
+
+/* Hover overlay — delete only */
+.layer-cell-overlay {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  display: none;
+}
+.layer-cell:hover .layer-cell-overlay {
+  display: block;
+}
+
+.layer-cell-overlay-btn {
+  background: rgba(0,0,0,0.55);
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 3px;
+  color: #fff;
+  cursor: pointer;
+  padding: 1px 4px;
+  font-size: 8px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.1s;
+}
+.layer-cell-del:hover {
+  background: rgba(248,113,113,0.7) !important;
+  border-color: rgba(248,113,113,0.9) !important;
+}
+
+/* Bottom actions: add + eye */
+.layers-column-actions {
+  display: flex;
+  gap: 4px;
+  width: 100%;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.layer-cell-add {
+  flex: 1;
+  height: 22px;
+  background: transparent;
+  border: 1px dashed var(--accent);
+  border-radius: 4px;
+  color: var(--accent);
+  font-size: 15px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.12s;
+}
+.layer-cell-add:hover {
+  background: var(--accent-dim);
+}
+
+.layer-eye-btn {
+  width: 26px;
+  height: 22px;
+  flex-shrink: 0;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.12s, color 0.12s;
+}
+.layer-eye-btn:hover {
+  color: var(--text);
+}
+.layer-eye-btn.layer-eye-off {
+  color: var(--text-muted);
+  opacity: 0.5;
 }
 
 /* ── Responsive breakpoints ────────────────────────────────── */

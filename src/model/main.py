@@ -224,6 +224,7 @@ def _generation_loop(req: GenerateRequest, queue: asyncio.Queue, loop: asyncio.A
                 {"text": req.prompt_b, "weight": req.alpha},
             ]
             print(f"[mixing] {len(prompt_list)} prompts: {[(p['text'][:30], p['weight']) for p in prompt_list]}")
+            print(f"[mixing] directional prompts: {[(d.get('from','')[:20], d.get('to','')[:20], d.get('scale',1)) for d in req.directional_prompts]}")
             embeddings = [encode_prompt(p["text"], pipe) for p in prompt_list]
             weights    = [float(p["weight"]) for p in prompt_list]
             pos_emb, pos_pooled = mix_embeddings(embeddings, weights)
