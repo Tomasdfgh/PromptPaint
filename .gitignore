@@ -3,6 +3,7 @@
 **/*.pyc
 .DS_Store
 node_modules/
+src/frontend/build/
 
 # Logs
 logs/
