@@ -73,7 +73,7 @@ export default function Sidebar({
           generating={generating}
         />
 
-        <DirectionalPromptsPanel params={params} set={set} />
+        <DirectionalPromptsPanel params={params} set={set} generating={generating} />
       </div>
 
       {/* Bottom: generation settings + progress + actions */}

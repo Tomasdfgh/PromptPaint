@@ -12,25 +12,32 @@ v_pm = Σ w_pi * v_pi
 This is a simple weighted average — a straight line between two points in embedding space. The paper supports mixing up to three prompts.
 
 ### What we do
-We use normalized lerp (nlerp) — a weighted sum that is then projected back onto the hypersphere by normalizing to unit length and restoring the average input magnitude:
+We use the **Fréchet mean** (Riemannian center of mass on the hypersphere) — an iterative algorithm that finds the point on the sphere minimizing the weighted sum of squared geodesic distances to all input embeddings:
 
 ```
-mixed = Σ w_i * v_i
-result = normalize(mixed) * avg_norm(v_i)
+Initialize: mean = normalize(Σ w_i * v_i)
+Repeat:
+  tangent = Σ w_i * log_mean(v_i)    # weighted sum of log maps
+  mean    = exp_mean(tangent)         # step along geodesic
+  mean    = normalize(mean)
 ```
 
-This generalizes cleanly to any number of prompts (2, 3, or more), with weights automatically normalized to sum to 1.
+The log map at the current estimate projects each input onto the tangent plane (pointing along the geodesic toward that input, scaled by geodesic distance). The exp map steps from the current estimate along the weighted tangent. 5 iterations is sufficient — the nlerp initialization is already close to the true mean.
+
+This generalizes cleanly to any number of prompts (2, 3, or more), with weights directly corresponding to prompt percentages. It is strictly order-independent. For two prompts it reduces exactly to slerp.
+
+Nlerp is kept in the codebase as a commented reference — the Fréchet mean is the active method.
 
 ### Why we changed it
 CLIP embeddings live on a hypersphere — all meaningful embeddings have roughly the same magnitude. Plain lerp cuts through the interior of that sphere, producing a midpoint with smaller magnitude than the inputs. This midpoint is out-of-distribution: the model was never trained on embeddings of that reduced magnitude, causing it to snap to whichever prompt's territory it falls closest to rather than producing a genuine blend.
 
-Nlerp corrects this by projecting the result back onto the sphere after the weighted sum, preserving magnitude and keeping the embedding in-distribution for the model.
+Nlerp partially corrects this by projecting back onto the sphere, but its weighted sum still cuts through the interior before projecting — for prompts that are far apart (near-orthogonal embeddings), this gives a different midpoint than the true geodesic path. The Fréchet mean stays on the sphere throughout, following the geodesic arc at every step of the iteration.
 
 ### Why this matters more for us than for the paper
 The paper used SD v1.5 with 768-dimensional CLIP embeddings. We use SDXL with 2048-dimensional embeddings (CLIP-L + CLIP-G concatenated). The magnitude shrinkage from plain lerp grows worse as dimensionality increases — the interior of a high-dimensional sphere is proportionally more "empty." Lerp partially worked at 768 dimensions but breaks more noticeably at 2048, making nlerp a necessary improvement for SDXL-based mixing.
 
 ### Additional extension: N-prompt mixing
-The paper caps mixing at three prompts. Our implementation supports any number of prompts — each with an independently configurable weight — using the same nlerp formulation, which is order-independent unlike iterative pairwise slerp.
+The paper caps mixing at three prompts. Our implementation supports any number of prompts — each with an independently configurable weight — using the Fréchet mean, which is order-independent unlike iterative pairwise slerp.
 
 ## 2. GPU Job Queue for Multi-User Access
 

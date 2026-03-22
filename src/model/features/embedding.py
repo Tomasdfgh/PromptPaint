@@ -48,29 +48,55 @@ def encode_prompt(prompt: str, pipeline) -> torch.Tensor:
     return prompt_embeds, pooled_prompt_embeds
 
 
-def _nlerp(tensors: list[torch.Tensor], weights: list[float]) -> torch.Tensor:
+def _frechet_mean(tensors: list[torch.Tensor], weights: list[float], n_iter: int = 5) -> torch.Tensor:
     """
-    Normalized lerp for N vectors — weighted sum projected back onto the
-    hypersphere. Order-independent and generalizes to any number of inputs.
+    Fréchet mean (Riemannian center of mass) on the hypersphere for N vectors.
+    Order-independent. Weights directly correspond to prompt percentages.
 
-    For seq embeddings [1, 77, 2048]: normalizes each token vector independently.
-    For pooled embeddings [1, 1280]: normalizes the single vector.
+    Iterative algorithm (geodesic gradient descent):
+      1. Initialize at the nlerp point (good starting estimate).
+      2. At each step, compute the log map of every input at the current mean
+         (tangent vector pointing toward that input along the geodesic, scaled
+         by geodesic distance), take the weighted sum, then step via the exp map.
+      3. Renormalize and repeat.
+
+    Applied per-position along dim=-1, so seq embeddings [1, 77, 2048] are
+    handled token-by-token and pooled embeddings [1, 1280] as a single vector.
     Preserves the average per-position magnitude of the inputs.
     """
     total = sum(weights)
-    weights = [w / total for w in weights]
+    w = [wi / total for wi in weights]
 
-    # Weighted sum
-    mixed = sum(w * t.float() for w, t in zip(weights, tensors))
+    floats = [t.float() for t in tensors]
 
-    # Average per-position norm across input tensors (keepdim for broadcasting)
-    # dim=-1 means per-token for seq, per-vector for pooled
-    avg_norm = torch.stack([t.float().norm(dim=-1, keepdim=True) for t in tensors]).mean(0)
+    # Average magnitude to restore after spherical interpolation
+    avg_norm = torch.stack([t.norm(dim=-1, keepdim=True) for t in floats]).mean(0)
 
-    # Normalize each position to unit length, then scale by average input norm
-    mixed = torch.nn.functional.normalize(mixed, dim=-1) * avg_norm
+    # Normalize inputs onto the unit hypersphere
+    F = torch.nn.functional
+    units = [F.normalize(t, dim=-1) for t in floats]
 
-    return mixed.to(tensors[0].dtype)
+    # Initialize: nlerp on unit sphere
+    mean = F.normalize(sum(wi * u for wi, u in zip(w, units)), dim=-1)
+
+    for _ in range(n_iter):
+        tangent = torch.zeros_like(mean)
+        for wi, u in zip(w, units):
+            # Cosine similarity clamped for numerical safety
+            cos_a = (mean * u).sum(dim=-1, keepdim=True).clamp(-1 + 1e-7, 1 - 1e-7)
+            angle = torch.acos(cos_a)                    # geodesic distance
+            # Log map: tangent vector at mean pointing toward u
+            perp = u - cos_a * mean                      # component of u perpendicular to mean
+            perp_norm = perp.norm(dim=-1, keepdim=True).clamp(min=1e-8)
+            log = angle * perp / perp_norm
+            tangent = tangent + wi * log
+
+        # Exp map: step from mean along the weighted tangent
+        t_norm = tangent.norm(dim=-1, keepdim=True).clamp(min=1e-8)
+        mean = torch.cos(t_norm) * mean + torch.sin(t_norm) * tangent / t_norm
+        mean = F.normalize(mean, dim=-1)
+
+    return (mean * avg_norm).to(tensors[0].dtype)
 
 
 def mix_embeddings(
@@ -78,8 +104,8 @@ def mix_embeddings(
     weights: list[float],
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """
-    Mix N encoded prompts using normalized lerp (nlerp).
-    Works for 2 or more prompts. Weights are automatically normalized to sum to 1.
+    Mix N encoded prompts using the Fréchet mean on the hypersphere.
+    Weights directly correspond to prompt percentages — order-independent.
 
     Args:
         embeddings: list of (seq_emb, pooled_emb) tuples from encode_prompt
@@ -87,7 +113,7 @@ def mix_embeddings(
     """
     seqs    = [e[0] for e in embeddings]
     pooleds = [e[1] for e in embeddings]
-    return _nlerp(seqs, weights), _nlerp(pooleds, weights)
+    return _frechet_mean(seqs, weights), _frechet_mean(pooleds, weights)
 
 
 def directional_embedding(

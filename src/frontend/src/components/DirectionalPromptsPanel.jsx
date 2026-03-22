@@ -64,7 +64,7 @@ function DirectionalTutorial({ onClose }) {
   );
 }
 
-function DirectionalPromptsPanel({ params, set }) {
+function DirectionalPromptsPanel({ params, set, generating }) {
   const [showTutorial, setShowTutorial] = useState(false);
 
   const dirPrompts = params.directional_prompts?.length > 0
@@ -97,7 +97,7 @@ function DirectionalPromptsPanel({ params, set }) {
           </button>
         </div>
         {dirPrompts.length < 3
-          ? <button className="btn-add-prompt" onClick={add}>+ Add</button>
+          ? <button className="btn-add-prompt" onClick={add} disabled={generating}>+ Add</button>
           : <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>limit reached</span>
         }
       </div>
@@ -112,6 +112,7 @@ function DirectionalPromptsPanel({ params, set }) {
                 value={d.from}
                 onChange={e => { if (e.target.value.length <= 30) update(i, 'from', e.target.value); }}
                 style={{ flex: 1, fontSize: 11, padding: '3px 6px' }}
+                disabled={generating}
               />
               <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>→</span>
               <input
@@ -120,11 +121,13 @@ function DirectionalPromptsPanel({ params, set }) {
                 value={d.to}
                 onChange={e => { if (e.target.value.length <= 30) update(i, 'to', e.target.value); }}
                 style={{ flex: 1, fontSize: 11, padding: '3px 6px' }}
+                disabled={generating}
               />
               {multi && (
                 <button
                   onClick={() => remove(i)}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 12, padding: '0 2px', lineHeight: 1 }}
+                  disabled={generating}
+                  style={{ background: 'none', border: 'none', cursor: generating ? 'default' : 'pointer', color: 'var(--text-muted)', fontSize: 12, padding: '0 2px', lineHeight: 1 }}
                 >✕</button>
               )}
             </div>
@@ -135,6 +138,7 @@ function DirectionalPromptsPanel({ params, set }) {
                 onChange={e => update(i, 'scale', parseFloat(e.target.value))}
                 className="slider"
                 style={{ ...sliderBg(d.scale, -3, 3), flex: 1 }}
+                disabled={generating}
               />
               <span className="slider-value" style={{ whiteSpace: 'nowrap', fontSize: 11, width: 72, textAlign: 'right', flexShrink: 0 }}>
                 {d.scale === 0

@@ -1722,7 +1722,7 @@ body {
 .about-feature-table td:first-child {
   white-space: nowrap;
   color: var(--text);
-  width: 110px;
+  width: 80px;
 }
 
 .about-feature-table td:last-child {
@@ -1731,11 +1731,19 @@ body {
 }
 
 .about-math {
-  width: 220px;
+  width: 180px;
   font-size: 0.82rem;
+  text-align: center;
 }
 .about-math .katex-display {
   margin: 0.3em 0;
+}
+.about-math-label {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-top: 0.6em;
+  margin-bottom: 0.1em;
+  text-align: center;
 }
 .app.light .about-math .katex {
   color: var(--text);
