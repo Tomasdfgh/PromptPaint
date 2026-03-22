@@ -1,7 +1,72 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { sliderBg } from './sidebarUtils';
 
+function DirectionalTutorial({ onClose }) {
+  const steps = [
+    {
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+        </svg>
+      ),
+      title: 'Set the Direction',
+      desc: 'Enter a "From" and "To" concept. This defines a direction in semantic space, like adding a new pigment that shifts your image toward "To" (e.g., matte → glossy).',
+    },
+    {
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <line x1="3" y1="12" x2="21" y2="12"/><circle cx="12" cy="12" r="3"/>
+        </svg>
+      ),
+      title: 'Adjust the Scale',
+      desc: 'Drag the slider to control the intensity. Positive values shift toward "To", negative values shift toward "From". Zero means no shift.',
+    },
+    {
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+      ),
+      title: 'Stack Directions',
+      desc: 'Click + Add to apply multiple directional shifts at once. Each one contributes independently, so you can layer several attributes simultaneously.',
+    },
+    {
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="6" cy="18" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><line x1="8.5" y1="15.5" x2="15.5" y2="8.5"/><line x1="15.5" y1="15.5" x2="8.5" y2="15.5"/>
+        </svg>
+      ),
+      title: 'Combine with Mixing',
+      desc: 'Directional prompts apply on top of your palette mix, letting you fine-tune attributes without changing your base composition. Active shifts are reflected in the Prompt Composition panel below.',
+    },
+  ];
+
+  return (
+    <div className="palette-tutorial-overlay" onClick={onClose}>
+      <div className="palette-tutorial" onClick={e => e.stopPropagation()}>
+        <div className="palette-tutorial-header">
+          <span className="palette-tutorial-title">How to use Directional Prompts</span>
+          <button className="palette-tutorial-close" onClick={onClose}>✕</button>
+        </div>
+        <div className="palette-tutorial-steps">
+          {steps.map((s, i) => (
+            <div key={i} className="palette-tutorial-step">
+              <div className="palette-tutorial-icon">{s.icon}</div>
+              <div>
+                <div className="palette-tutorial-step-title">{s.title}</div>
+                <div className="palette-tutorial-step-desc">{s.desc}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DirectionalPromptsPanel({ params, set }) {
+  const [showTutorial, setShowTutorial] = useState(false);
+
   const dirPrompts = params.directional_prompts?.length > 0
     ? params.directional_prompts
     : [{ from: '', to: '', scale: 1 }];
@@ -19,10 +84,20 @@ function DirectionalPromptsPanel({ params, set }) {
 
   return (
     <section className="panel prompt-list-panel">
+      {showTutorial && <DirectionalTutorial onClose={() => setShowTutorial(false)} />}
       <div className="prompt-list-header">
-        <label className="field-label">Directional Prompts</label>
+        <div className="palette-label-row">
+          <label className="field-label">Directional Prompts</label>
+          <button className="palette-info-btn" onClick={() => setShowTutorial(true)} aria-label="How to use directional prompts">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="8" cy="8" r="7"/>
+              <line x1="8" y1="7" x2="8" y2="11"/>
+              <circle cx="8" cy="4.5" r="0.5" fill="currentColor" stroke="none"/>
+            </svg>
+          </button>
+        </div>
         {dirPrompts.length < 3
-          ? <button className="btn-add-prompt" onClick={add}>+ Add Prompt</button>
+          ? <button className="btn-add-prompt" onClick={add}>+ Add</button>
           : <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>limit reached</span>
         }
       </div>

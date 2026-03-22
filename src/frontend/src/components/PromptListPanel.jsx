@@ -124,7 +124,7 @@ function PromptRow({ prompt, index, onUpdate, onRemove, showRemove, showWeight, 
 function PromptListPanel({ params, set }) {
   const prompts = params.prompts?.length > 0
     ? params.prompts
-    : [{ text: '', color: promptHue(0), weight: 1 }, { text: '', color: promptHue(1), weight: 1 }];
+    : [{ text: '', color: promptHue(0), weight: 1 }];
 
   const totalWeight = prompts.reduce((s, p) => s + (p.weight ?? 1), 0);
   const multiPrompt = prompts.length > 1;
@@ -144,7 +144,7 @@ function PromptListPanel({ params, set }) {
     <section className="panel prompt-list-panel">
       <div className="prompt-list-header">
         <label className="field-label">Prompt List</label>
-        <button className="btn-add-prompt" onClick={addPrompt}>+ Add Prompt</button>
+        <button className="btn-add-prompt" onClick={addPrompt}>+ Add</button>
       </div>
       <div className="prompt-list">
         {prompts.map((p, i) => (
@@ -157,7 +157,7 @@ function PromptListPanel({ params, set }) {
             showRemove={multiPrompt}
             showWeight={multiPrompt}
             totalWeight={totalWeight}
-            autoFocus={i === 0}
+            autoFocus
           />
         ))}
       </div>

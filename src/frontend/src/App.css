@@ -1244,6 +1244,7 @@ body {
   align-items: center;
   justify-content: center;
   overflow: hidden;
+  padding-right: min(104px, 10vw);
 }
 
 .canvas-wrapper {

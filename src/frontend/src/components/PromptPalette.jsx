@@ -129,7 +129,10 @@ function PromptPalette({ prompts, onWeightsChange, onCursorPosChange, historyCha
   const [mousePos, setMousePos] = useState(null);
   const [links, setLinks] = useState([]);
   const [topDot, setTopDot] = useState(null);
-  const [cursorPos, setCursorPos] = useState(() => defaultPalettePos(0, prompts.length));
+  const [cursorPos, setCursorPos] = useState(() => {
+    const p = defaultPalettePos(0, prompts.length);
+    return { x: p.x - 4.5, y: p.y + 4.5 };
+  });
 
   const setHeightScale = (v) => {
     heightScaleRef.current = v;

@@ -43,11 +43,8 @@ const DEFAULT_PARAMS = {
   prompt_b: '',
   prompts: [
     { text: '', color: '#e8455c', weight: 1 },
-    { text: '', color: '#4fa3e8', weight: 1 },
-    { text: '', color: '#33e65c', weight: 1 },
   ],
   directional_prompts: [
-    { from: '', to: '', scale: 1 },
     { from: '', to: '', scale: 1 },
   ],
   from_concept: '',
