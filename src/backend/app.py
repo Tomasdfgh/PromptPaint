@@ -29,6 +29,7 @@ MODEL_URL  = os.getenv('MODEL_SERVICE_URL', 'http://model:8000')
 LOGS_DIR   = os.getenv('LOGS_DIR', '/app/logs')
 CONTACT_LOG = os.path.join(LOGS_DIR, 'contact_messages.csv')
 PROMPT_LOG  = os.path.join(LOGS_DIR, 'prompt_request_logs.csv')
+TRAFFIC_LOG = os.path.join(LOGS_DIR, 'traffic_log.csv')
 
 os.makedirs(LOGS_DIR, exist_ok=True)
 
@@ -102,7 +103,13 @@ def health():
 
 @socketio.on('connect')
 def on_connect():
-    pass
+    timestamp = datetime.now(timezone.utc).isoformat()
+    ip = get_client_ip()
+    write_csv_row(
+        TRAFFIC_LOG,
+        ['timestamp', 'ip'],
+        [timestamp, ip],
+    )
 
 
 @socketio.on('generate')
