@@ -97,6 +97,7 @@ export default function Canvas({
   const strokesRef  = useRef([]);
   const paintingRef = useRef(false);
   const panStartRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   // Layer compositing refs
   const layerCanvasesRef    = useRef(new Map());
@@ -116,6 +117,15 @@ export default function Canvas({
   const [eraserMode, setEraserMode] = useState(false);
   const [eraserPos, setEraserPos] = useState(null);
   const [displaySize, setDisplaySize] = useState({ w: width, h: height });
+  const [lassoMode, setLassoMode] = useState(false);
+  const [lassoSelection, setLassoSelection] = useState(null); // {path: [{x,y}]} | null
+
+  // Lasso refs
+  const lassoPathRef          = useRef([]); // points being drawn
+  const isDrawingLassoRef     = useRef(false);
+  const floatingRef           = useRef(null); // {canvas, offsetX, offsetY, path, dragDeltaX, dragDeltaY}
+  const isDraggingFloatingRef = useRef(false);
+  const dragAnchorRef         = useRef(null); // {mouseX, mouseY}
 
   const selectedIndex = ALL_SIZES.findIndex(s => s.w === width && s.h === height);
   const effectiveIndex = selectedIndex === -1 ? 0 : selectedIndex;
@@ -299,6 +309,166 @@ export default function Canvas({
     setPan({ x: 0, y: 0 });
   }, []);
 
+  const handleImageUpload = useCallback((e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        // Find the supported size with the closest aspect ratio
+        const imgRatio = img.naturalWidth / img.naturalHeight;
+        const best = ALL_SIZES.reduce((prev, cur) => {
+          return Math.abs(cur.w / cur.h - imgRatio) < Math.abs(prev.w / prev.h - imgRatio) ? cur : prev;
+        });
+        // Resize canvas to that size
+        onSizeChange({ width: best.w, height: best.h });
+        // Draw image onto offscreen canvas at the new size
+        const off = document.createElement('canvas');
+        off.width = best.w;
+        off.height = best.h;
+        off.getContext('2d').drawImage(img, 0, 0, best.w, best.h);
+        const b64 = off.toDataURL('image/png').split(',')[1];
+        onLayerUpdate?.(activeLayerIdRef.current, b64);
+        fetch('/api/log/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ width: best.w, height: best.h }),
+        }).catch(() => {});
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  }, [onSizeChange, onLayerUpdate]);
+
+  const canvasHasContent = (canvas) => {
+    const data = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+    for (let i = 3; i < data.length; i += 4) { if (data[i] > 0) return true; }
+    return false;
+  };
+
+  // Ray-casting point-in-polygon (no canvas context needed)
+  const pointInPolygon = useCallback((x, y, path) => {
+    if (!path || path.length < 3) return false;
+    let inside = false;
+    for (let i = 0, j = path.length - 1; i < path.length; j = i++) {
+      const xi = path[i].x, yi = path[i].y;
+      const xj = path[j].x, yj = path[j].y;
+      if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi))
+        inside = !inside;
+    }
+    return inside;
+  }, []);
+
+  const drawLassoOverlay = useCallback((path, closed, deltaX = 0, deltaY = 0, floatCanvas = null, floatOffX = 0, floatOffY = 0) => {
+    const overlay = overlayRef.current;
+    if (!overlay) return;
+    const ctx = overlay.getContext('2d');
+    ctx.clearRect(0, 0, overlay.width, overlay.height);
+    if (path.length < 2) return;
+    // Draw floating pixels first (behind outline)
+    if (floatCanvas) {
+      ctx.drawImage(floatCanvas, floatOffX + deltaX, floatOffY + deltaY);
+    }
+    // Draw lasso outline
+    ctx.beginPath();
+    ctx.moveTo(path[0].x + deltaX, path[0].y + deltaY);
+    for (let i = 1; i < path.length; i++) ctx.lineTo(path[i].x + deltaX, path[i].y + deltaY);
+    if (closed) {
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(59, 130, 246, 0.2)';
+      ctx.fill();
+    }
+    ctx.strokeStyle = 'rgba(59, 130, 246, 0.9)';
+    ctx.lineWidth = 2 * (overlay.width / (overlayRef.current?.getBoundingClientRect().width || overlay.width));
+    ctx.setLineDash(closed ? [6, 3] : []);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }, []);
+
+  const clearLasso = useCallback(() => {
+    const overlay = overlayRef.current;
+    if (overlay) overlay.getContext('2d').clearRect(0, 0, overlay.width, overlay.height);
+    lassoPathRef.current = [];
+    isDrawingLassoRef.current = false;
+    floatingRef.current = null;
+    isDraggingFloatingRef.current = false;
+    dragAnchorRef.current = null;
+    setLassoSelection(null);
+  }, []);
+
+  const cutSelection = useCallback((path) => {
+    const id = activeLayerIdRef.current;
+    const lc = layerCanvasesRef.current.get(id);
+    if (!lc || !path || path.length < 3) return null;
+    const xs = path.map(p => p.x), ys = path.map(p => p.y);
+    const minX = Math.max(0, Math.floor(Math.min(...xs)));
+    const minY = Math.max(0, Math.floor(Math.min(...ys)));
+    const maxX = Math.min(lc.width,  Math.ceil(Math.max(...xs)));
+    const maxY = Math.min(lc.height, Math.ceil(Math.max(...ys)));
+    const bw = maxX - minX, bh = maxY - minY;
+    if (bw <= 0 || bh <= 0) return null;
+    // Capture clipped pixels into floating canvas
+    const floatCanvas = document.createElement('canvas');
+    floatCanvas.width = bw; floatCanvas.height = bh;
+    const fctx = floatCanvas.getContext('2d');
+    fctx.save();
+    fctx.beginPath();
+    fctx.moveTo(path[0].x - minX, path[0].y - minY);
+    for (let i = 1; i < path.length; i++) fctx.lineTo(path[i].x - minX, path[i].y - minY);
+    fctx.closePath();
+    fctx.clip();
+    fctx.drawImage(lc, -minX, -minY);
+    fctx.restore();
+    // Erase from layer
+    const lctx = lc.getContext('2d');
+    lctx.save();
+    lctx.globalCompositeOperation = 'destination-out';
+    lctx.beginPath();
+    lctx.moveTo(path[0].x, path[0].y);
+    for (let i = 1; i < path.length; i++) lctx.lineTo(path[i].x, path[i].y);
+    lctx.closePath();
+    lctx.fill();
+    lctx.restore();
+    compositeAll();
+    return { canvas: floatCanvas, offsetX: minX, offsetY: minY, path, dragDeltaX: 0, dragDeltaY: 0 };
+  }, [compositeAll]);
+
+  const stampFloating = useCallback(() => {
+    const floating = floatingRef.current;
+    if (!floating) return;
+    const id = activeLayerIdRef.current;
+    const lc = layerCanvasesRef.current.get(id);
+    if (!lc) return;
+    lc.getContext('2d').drawImage(floating.canvas, floating.offsetX + floating.dragDeltaX, floating.offsetY + floating.dragDeltaY);
+    compositeAll();
+    const b64 = canvasHasContent(lc) ? lc.toDataURL('image/png').split(',')[1] : null;
+    onLayerUpdate?.(id, b64);
+    reportComposite();
+    clearLasso();
+  }, [compositeAll, onLayerUpdate, reportComposite, clearLasso]);
+
+  const deleteSelection = useCallback((path) => {
+    const id = activeLayerIdRef.current;
+    const lc = layerCanvasesRef.current.get(id);
+    if (!lc || !path || path.length < 3) return;
+    const ctx = lc.getContext('2d');
+    ctx.save();
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.beginPath();
+    ctx.moveTo(path[0].x, path[0].y);
+    for (let i = 1; i < path.length; i++) ctx.lineTo(path[i].x, path[i].y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    compositeAll();
+    const b64 = canvasHasContent(lc) ? lc.toDataURL('image/png').split(',')[1] : null;
+    onLayerUpdate?.(id, b64);
+    reportComposite();
+    clearLasso();
+  }, [compositeAll, onLayerUpdate, reportComposite, clearLasso]);
+
   const toCanvasCoords = useCallback((canvasEl, clientX, clientY) => {
     const rect = canvasEl.getBoundingClientRect();
     return {
@@ -338,11 +508,33 @@ export default function Canvas({
   }, [brushRadius, compositeAll]);
 
   const handleMouseDown = useCallback((e) => {
-    if (e.button !== 0 || (!stencilMode && !eraserMode)) return;
-    if (eraserMode && isPreview) return;
-    paintingRef.current = true;
+    if (e.button !== 0) return;
     const canvas = overlayRef.current;
     const coords = toCanvasCoords(canvas, e.clientX, e.clientY);
+
+    if (lassoMode) {
+      // If there's a floating selection being dragged, stamp it first
+      if (isDraggingFloatingRef.current) return;
+      // If there's a closed selection and click is inside it, start move
+      if (lassoSelection && pointInPolygon(coords.x, coords.y, lassoSelection.path)) {
+        const floating = cutSelection(lassoSelection.path);
+        if (!floating) return;
+        floatingRef.current = floating;
+        isDraggingFloatingRef.current = true;
+        dragAnchorRef.current = { mouseX: coords.x, mouseY: coords.y };
+        setLassoSelection(null);
+        return;
+      }
+      // Otherwise start drawing a new lasso
+      clearLasso();
+      isDrawingLassoRef.current = true;
+      lassoPathRef.current = [{ x: coords.x, y: coords.y }];
+      return;
+    }
+
+    if (!stencilMode && !eraserMode) return;
+    if (eraserMode && isPreview) return;
+    paintingRef.current = true;
     if (eraserMode) {
       eraseAt(coords.x, coords.y);
     } else {
@@ -350,13 +542,37 @@ export default function Canvas({
       strokesRef.current.push({ x: coords.x, y: coords.y, radius: r });
       onStrokesChange([...strokesRef.current]);
     }
-  }, [stencilMode, eraserMode, isPreview, toCanvasCoords, applyStroke, eraseAt, onStrokesChange]);
+  }, [lassoMode, lassoSelection, stencilMode, eraserMode, isPreview, toCanvasCoords, applyStroke, eraseAt, onStrokesChange, pointInPolygon, cutSelection, clearLasso]);
 
   const handleMouseMove = useCallback((e) => {
     if (isPanning) { handlePanMove(e); return; }
-    if ((!stencilMode && !eraserMode) || !paintingRef.current) return;
     const canvas = overlayRef.current;
     const coords = toCanvasCoords(canvas, e.clientX, e.clientY);
+
+    if (lassoMode) {
+      // Dragging floating selection
+      if (isDraggingFloatingRef.current && floatingRef.current) {
+        const anchor = dragAnchorRef.current;
+        floatingRef.current.dragDeltaX = coords.x - anchor.mouseX;
+        floatingRef.current.dragDeltaY = coords.y - anchor.mouseY;
+        const f = floatingRef.current;
+        drawLassoOverlay(f.path, true, f.dragDeltaX, f.dragDeltaY, f.canvas, f.offsetX, f.offsetY);
+        return;
+      }
+      // Drawing lasso path
+      if (isDrawingLassoRef.current) {
+        const path = lassoPathRef.current;
+        const last = path[path.length - 1];
+        const dx = coords.x - last.x, dy = coords.y - last.y;
+        if (dx * dx + dy * dy > 4) { // min distance threshold
+          path.push({ x: coords.x, y: coords.y });
+          drawLassoOverlay(path, false);
+        }
+      }
+      return;
+    }
+
+    if ((!stencilMode && !eraserMode) || !paintingRef.current) return;
     if (eraserMode) {
       eraseAt(coords.x, coords.y);
     } else {
@@ -364,9 +580,29 @@ export default function Canvas({
       strokesRef.current.push({ x: coords.x, y: coords.y, radius: r });
       onStrokesChange([...strokesRef.current]);
     }
-  }, [stencilMode, eraserMode, toCanvasCoords, applyStroke, eraseAt, onStrokesChange, isPanning, handlePanMove]);
+  }, [lassoMode, stencilMode, eraserMode, toCanvasCoords, applyStroke, eraseAt, onStrokesChange, isPanning, handlePanMove, drawLassoOverlay]);
 
   const handleMouseUp = useCallback(() => {
+    if (lassoMode) {
+      // Stamp floating selection on mouse up
+      if (isDraggingFloatingRef.current) {
+        stampFloating();
+        return;
+      }
+      // Close the lasso path
+      if (isDrawingLassoRef.current) {
+        const path = lassoPathRef.current;
+        isDrawingLassoRef.current = false;
+        if (path.length >= 3) {
+          drawLassoOverlay(path, true);
+          setLassoSelection({ path });
+        } else {
+          clearLasso();
+        }
+        return;
+      }
+    }
+
     if (paintingRef.current && eraserMode) {
       const id = activeLayerIdRef.current;
       const lc = layerCanvasesRef.current.get(id);
@@ -378,7 +614,7 @@ export default function Canvas({
     }
     paintingRef.current = false;
     handlePanEnd();
-  }, [eraserMode, onLayerUpdate, reportComposite, handlePanEnd]);
+  }, [lassoMode, eraserMode, onLayerUpdate, reportComposite, handlePanEnd, stampFloating, drawLassoOverlay, clearLasso]);
 
   const clearStrokes = useCallback(() => {
     const canvas = overlayRef.current;
@@ -394,9 +630,33 @@ export default function Canvas({
     clearStrokes();
   }, [generating, clearStrokes]);
 
-  // Clear strokes when switching active layer
+  // Stencil deactivates lasso
+  useEffect(() => {
+    if (stencilMode) { setLassoMode(false); clearLasso(); }
+  }, [stencilMode, clearLasso]);
+
+  // Exit lasso mode and clear selection when generation starts
+  useEffect(() => {
+    if (generating) { setLassoMode(false); clearLasso(); }
+  }, [generating, clearLasso]);
+
+  // Escape = deselect, Delete/Backspace = delete selection
+  useEffect(() => {
+    const handler = (e) => {
+      if (!lassoMode) return;
+      if (e.key === 'Escape') clearLasso();
+      if ((e.key === 'Delete' || e.key === 'Backspace') && lassoSelection) {
+        deleteSelection(lassoSelection.path);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [lassoMode, lassoSelection, clearLasso, deleteSelection]);
+
+  // Clear strokes and lasso when switching active layer
   useEffect(() => {
     clearStrokes();
+    clearLasso();
   }, [activeLayerId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Attach wheel as non-passive to canvas outer
@@ -423,7 +683,7 @@ export default function Canvas({
     >
       <div
         className="canvas-wrapper"
-        style={{ transform, width: displaySize.w, height: displaySize.h, cursor: eraserPos ? 'none' : undefined, display: allHidden ? 'none' : undefined }}
+        style={{ transform, width: displaySize.w, height: displaySize.h, cursor: eraserPos ? 'none' : isDraggingFloatingRef.current ? 'grabbing' : lassoMode ? 'crosshair' : undefined, display: allHidden ? 'none' : undefined }}
         onMouseMove={(e) => { if (eraserMode) setEraserPos({ x: e.clientX, y: e.clientY }); }}
         onMouseLeave={() => setEraserPos(null)}
       >
@@ -431,7 +691,7 @@ export default function Canvas({
 
         <canvas
           ref={overlayRef}
-          className={`canvas-overlay ${stencilMode ? 'active' : ''} ${eraserMode ? 'erasing' : ''}`}
+          className={`canvas-overlay ${stencilMode ? 'active' : ''} ${eraserMode ? 'erasing' : ''} ${lassoMode ? 'lasso' : ''}`}
           width={width}
           height={height}
           onMouseDown={handleMouseDown}
@@ -457,6 +717,13 @@ export default function Canvas({
           <div className="stencil-toolbar">
             <button className="btn-small" onClick={clearStrokes}>Clear Stencil Paint</button>
             {stencilMode && <span className="stencil-hint">Brush the area to regenerate</span>}
+          </div>
+        )}
+
+        {lassoMode && lassoSelection && (
+          <div className="stencil-toolbar">
+            <button className="btn-small" onClick={clearLasso}>Deselect</button>
+            <span className="stencil-hint">Drag to move</span>
           </div>
         )}
 
@@ -488,6 +755,8 @@ export default function Canvas({
           title="Pan mode"
           onClick={() => {
             if (stencilMode) onStencilActiveChange?.(false);
+            setLassoMode(false);
+            clearLasso();
             setPanMode(m => !m);
             setEraserMode(false);
           }}
@@ -505,11 +774,33 @@ export default function Canvas({
           onClick={() => {
             setEraserMode(m => !m);
             setPanMode(false);
+            setLassoMode(false);
+            clearLasso();
           }}
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" width="22" height="22">
             <path d="M20 20H7L3 16l11-11 6 6-3.5 3.5"/>
             <path d="M6.0001 17.0001L17 6"/>
+          </svg>
+        </button>
+        <button
+          className={`canvas-mode-btn ${lassoMode ? 'active' : ''}`}
+          title="Lasso select"
+          onClick={() => {
+            setLassoMode(m => !m);
+            setPanMode(false);
+            setEraserMode(false);
+            if (stencilMode) onStencilActiveChange?.(false);
+            if (lassoMode) clearLasso();
+          }}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" width="22" height="22">
+            {/* loop oval */}
+            <ellipse cx="12" cy="9" rx="6" ry="5"/>
+            {/* knot dot */}
+            <circle cx="12" cy="14" r="1" fill="currentColor" stroke="none"/>
+            {/* rope tail with slight curve */}
+            <path d="M11 15 Q10 18 12 22"/>
           </svg>
         </button>
         <button
@@ -553,10 +844,17 @@ export default function Canvas({
           </svg>
         </button>
 
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          style={{ display: 'none' }}
+          onChange={handleImageUpload}
+        />
         <button
           className="canvas-mode-btn"
           title="Upload image to canvas"
-          onClick={() => {}}
+          onClick={() => fileInputRef.current?.click()}
           style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" width="18" height="18">

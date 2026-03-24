@@ -30,6 +30,7 @@ LOGS_DIR   = os.getenv('LOGS_DIR', '/app/logs')
 CONTACT_LOG = os.path.join(LOGS_DIR, 'contact_messages.csv')
 PROMPT_LOG  = os.path.join(LOGS_DIR, 'prompt_request_logs.csv')
 TRAFFIC_LOG = os.path.join(LOGS_DIR, 'traffic_log.csv')
+UPLOAD_LOG  = os.path.join(LOGS_DIR, 'image_upload_log.csv')
 
 os.makedirs(LOGS_DIR, exist_ok=True)
 
@@ -84,6 +85,21 @@ def contact_message():
         [timestamp, ip, subject, message],
     )
     print(f'✓ Contact message received | IP: {ip} | Subject: {subject[:40]}')
+    return jsonify({'status': 'ok'}), 200
+
+
+@app.route('/api/log/upload', methods=['POST'])
+def log_upload():
+    body = request.get_json(silent=True) or {}
+    ip        = get_client_ip()
+    timestamp = datetime.now(timezone.utc).isoformat()
+    width     = body.get('width', '')
+    height    = body.get('height', '')
+    write_csv_row(
+        UPLOAD_LOG,
+        ['timestamp', 'ip', 'width', 'height'],
+        [timestamp, ip, width, height],
+    )
     return jsonify({'status': 'ok'}), 200
 
 

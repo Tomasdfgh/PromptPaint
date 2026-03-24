@@ -1291,6 +1291,10 @@ body {
 .canvas-overlay.erasing {
   pointer-events: all;
 }
+.canvas-overlay.lasso {
+  pointer-events: all;
+  cursor: crosshair;
+}
 
 .eraser-preview {
   position: fixed;
