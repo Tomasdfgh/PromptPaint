@@ -13,7 +13,7 @@ export default function Sidebar({
   generating, queuePos, step, totalSteps,
   brushRadius, onBrushRadiusChange,
   stencilActive, onStencilActiveChange,
-  hasStrokes,
+  hasStrokes, generatingStencil,
   onPaletteWeightsChange, onPaletteCursorPosChange,
   generationChain,
   stepPreviews, resumeStep, onScrub, onUnscrub,
@@ -91,9 +91,9 @@ export default function Sidebar({
           />
 
           {/* Generation target indicator */}
-          <div className={`gen-target ${hasStrokes ? 'gen-target-stencil' : 'gen-target-canvas'}`}>
+          <div className={`gen-target ${(hasStrokes || generatingStencil) ? 'gen-target-stencil' : 'gen-target-canvas'}`}>
             <span className="gen-target-dot" />
-            {hasStrokes ? 'Painting to stenciled region' : 'Painting to full canvas'}
+            {(hasStrokes || generatingStencil) ? 'Painting to stenciled region' : 'Painting to full canvas'}
           </div>
 
           {/* Action buttons */}

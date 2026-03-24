@@ -121,6 +121,7 @@ def on_generate(data):
     # Log prompt composition (non-zero prompts + directional prompts)
     try:
         timestamp = datetime.now(timezone.utc).isoformat()
+        ip = get_client_ip()
         prompts = data.get('prompts', [])
         active_prompts = [p for p in prompts if float(p.get('weight', 0)) > 0.001 and p.get('text', '').strip()]
         composition = '; '.join(f'"{p["text"]}" ({round(float(p["weight"]) * 100)}%)' for p in active_prompts)
@@ -132,8 +133,8 @@ def on_generate(data):
         ) or '(none)'
         write_csv_row(
             PROMPT_LOG,
-            ['timestamp', 'mode', 'composition', 'directional_prompts', 'steps', 'width', 'height'],
-            [timestamp, data.get('mode', ''), composition, dir_str,
+            ['timestamp', 'ip', 'mode', 'composition', 'directional_prompts', 'steps', 'width', 'height'],
+            [timestamp, ip, data.get('mode', ''), composition, dir_str,
              data.get('steps', ''), data.get('width', ''), data.get('height', '')],
         )
     except Exception as e:

@@ -552,6 +552,20 @@ export default function Canvas({
             <line x1="12" y1="15" x2="12" y2="3"/>
           </svg>
         </button>
+
+        <button
+          className="canvas-mode-btn"
+          title="Upload image to canvas"
+          onClick={() => {}}
+          style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" width="18" height="18">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 14 12 9 17 14"/>
+            <line x1="12" y1="9" x2="12" y2="21"/>
+          </svg>
+          <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.03em', lineHeight: 1, color: 'currentColor' }}>IMG</span>
+        </button>
       </div>
 
       {eraserMode && eraserPos && (

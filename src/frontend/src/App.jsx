@@ -6,6 +6,7 @@ import Canvas from './components/Canvas';
 import LayersPanel from './components/LayersPanel';
 import About from './components/About';
 import Contact from './components/Contact';
+import MobileLanding from './components/MobileLanding';
 import { uoftLogoDataUri } from './assets/uoftLogoBase64';
 import './App.css';
 
@@ -81,6 +82,7 @@ export default function App() {
   const [queuePos,    setQueuePos]    = useState(null);
   const [paletteWeights, setPaletteWeights] = useState([]);
   const [theme, setTheme] = useState(() => localStorage.getItem('pp-theme') || 'dark');
+  const [generatingStencil, setGeneratingStencil] = useState(false);
 
   // Scrubber state (UI — reset when switching layers)
   const [resumeStep,        setResumeStep]        = useState(null);
@@ -178,6 +180,7 @@ export default function App() {
         }));
         setTotalSteps(total);
         setGenerating(false);
+        setGeneratingStencil(false);
         setQueuePos(null);
         setStep(0);
         generatingLayerIdRef.current = null;
@@ -192,6 +195,7 @@ export default function App() {
 
     socket.on('error', (data) => {
       setGenerating(false);
+      setGeneratingStencil(false);
       setQueuePos(null);
       generatingLayerIdRef.current = null;
       console.error('Generation error:', data?.message ?? data);
@@ -271,6 +275,7 @@ export default function App() {
     isStencilGenRef.current      = hasStrokes;
     preStencilImageRef.current   = hasStrokes ? activeLayerImage : null;
     generatingLayerIdRef.current = activeLayerIdRef.current;
+    setGeneratingStencil(hasStrokes);
     setScrubImage(null);
     setResumeStep(null);
     setStencilActive(false);
@@ -360,6 +365,8 @@ export default function App() {
   // Render
   // ---------------------------------------------------------------------------
   return (
+    <>
+    <MobileLanding />
     <div className={`app ${theme}`}>
       <header className="app-header">
         <div className="header-title">
@@ -427,6 +434,7 @@ export default function App() {
           resumeStep={resumeStep}
           onScrub={handleScrub}
           onUnscrub={handleUnscrub}
+          generatingStencil={generatingStencil}
         />
 
         <section className="canvas-area">
@@ -499,10 +507,11 @@ export default function App() {
             onSizeChange={({ width, height }) => setParams(p => ({ ...p, width, height }))}
           />
           <p className="canvas-area-footer">
-            Based on PromptPaint by John Joon Young Chung &amp; Eytan Adar, University of Michigan
+            Based on <em>PromptPaint</em> by John Joon Young Chung &amp; Eytan Adar, University of Michigan · UIST 2023 · Implemented by Thomas Nguyen, University of Toronto
           </p>
         </section>
       </main>
     </div>
+    </>
   );
 }
