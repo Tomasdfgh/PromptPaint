@@ -273,6 +273,7 @@ export default function App() {
     generatingLayerIdRef.current = activeLayerIdRef.current;
     setScrubImage(null);
     setResumeStep(null);
+    setStencilActive(false);
     setGenerating(true);
     setStep(resumeStep ?? 0);
     setTotalSteps(params.steps || 40);
@@ -492,6 +493,7 @@ export default function App() {
             generating={generating}
             brushRadius={brushRadius}
             onStrokesChange={setStrokes}
+            hasStrokes={strokes.length > 0}
             width={params.width}
             height={params.height}
             onSizeChange={({ width, height }) => setParams(p => ({ ...p, width, height }))}

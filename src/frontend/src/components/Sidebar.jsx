@@ -87,6 +87,7 @@ export default function Sidebar({
             params={params} set={set}
             brushRadius={brushRadius} onBrushRadiusChange={onBrushRadiusChange}
             stencilActive={stencilActive} onStencilActiveChange={onStencilActiveChange}
+            generating={generating}
           />
 
           {/* Generation target indicator */}

@@ -1,11 +1,12 @@
 import React from 'react';
 import { sliderBg } from './sidebarUtils';
 
-function SharedParams({ params, set, brushRadius, onBrushRadiusChange, stencilActive, onStencilActiveChange }) {
+function SharedParams({ params, set, brushRadius, onBrushRadiusChange, stencilActive, onStencilActiveChange, generating }) {
+  const disabledStyle = generating ? { opacity: 0.4, pointerEvents: 'none' } : {};
   return (
     <section className="panel panel-settings">
       <label className="field-label" style={{ marginBottom: 6 }}>Generation settings</label>
-      <div className="sliders-grid">
+      <div className="sliders-grid" style={disabledStyle}>
         <div className="slider-row">
           <label className="field-label">
             Steps — <span className="slider-value">{params.steps || 40}</span>
@@ -53,12 +54,13 @@ function SharedParams({ params, set, brushRadius, onBrushRadiusChange, stencilAc
           type="button"
           className={`stencil-toggle-btn${stencilActive ? ' active' : ''}`}
           onClick={() => onStencilActiveChange(!stencilActive)}
+          style={disabledStyle}
         >
           {stencilActive ? 'On' : 'Off'}
         </button>
       </div>
 
-      <div className="sliders-grid" style={!stencilActive ? { opacity: 0.35, pointerEvents: 'none' } : {}}>
+      <div className="sliders-grid" style={generating ? { opacity: 0.4, pointerEvents: 'none' } : !stencilActive ? { opacity: 0.35, pointerEvents: 'none' } : {}}>
         <div className="slider-row">
           <label className="field-label">
             Brush radius — <span className="slider-value">{brushRadius}px</span>

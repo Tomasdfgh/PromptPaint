@@ -88,7 +88,7 @@ export default function Canvas({
   layers = [], activeLayerId = null, activeLayerOverride = null,
   onLayerUpdate, onCompositeChange,
   isPreview, stencilMode, onStencilActiveChange,
-  generating, brushRadius, onStrokesChange,
+  generating, brushRadius, onStrokesChange, hasStrokes,
   width = 1024, height = 1024, onSizeChange,
 }) {
   const canvasRef   = useRef(null);
@@ -166,6 +166,14 @@ export default function Canvas({
       setEraserMode(false);
     }
   }, [stencilMode]);
+
+  // When generation starts, activate hand (pan) mode
+  useEffect(() => {
+    if (generating) {
+      setPanMode(true);
+      setEraserMode(false);
+    }
+  }, [generating]);
 
   // Composite all visible layers onto canvasRef
   const compositeAll = useCallback(() => {
@@ -445,10 +453,10 @@ export default function Canvas({
           </div>
         )}
 
-        {stencilMode && (
+        {(stencilMode || hasStrokes) && (
           <div className="stencil-toolbar">
-            <button className="btn-small" onClick={clearStrokes}>Clear strokes</button>
-            <span className="stencil-hint">Brush the area to regenerate</span>
+            <button className="btn-small" onClick={clearStrokes}>Clear Stencil Paint</button>
+            {stencilMode && <span className="stencil-hint">Brush the area to regenerate</span>}
           </div>
         )}
 
