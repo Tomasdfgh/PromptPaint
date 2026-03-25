@@ -5,8 +5,8 @@ services:
       dockerfile: src/model/Dockerfile
     container_name: promptpaint-model
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --workers 1
-    ports:
-      - "8000:8000"
+    # Port 8000 is intentionally NOT published — the model service is only
+    # reachable from the backend container via the internal Docker network.
     volumes:
       - model-cache:/model-cache
     environment:

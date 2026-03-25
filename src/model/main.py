@@ -21,7 +21,7 @@ import torch
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 from PIL import Image
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from pipeline import load_pipeline, get_pipeline
 from features.embedding import encode_prompt, mix_embeddings, directional_embedding
@@ -134,6 +134,11 @@ def _delete_session(session_id: str):
 # Request models
 # ---------------------------------------------------------------------------
 
+_VALID_MODES = {"standard", "mixing", "directional", "stencil"}
+# Maximum base64-encoded image size accepted (≈15 MB of actual image data).
+_MAX_IMAGE_B64_LEN = 20 * 1024 * 1024
+
+
 class GenerateRequest(BaseModel):
     session_id:          str   = "default"
     mode:                str   = "standard"
@@ -143,15 +148,15 @@ class GenerateRequest(BaseModel):
     prompt_b:            str   = ""
     from_concept:        str   = ""
     to_concept:          str   = ""
-    alpha:               float = 0.5
-    scale:               float = 1.0
-    steps:               int   = 40
-    guide_scale:         float = 7.0
-    single_stroke:       int   = 20
-    overcoat:            int   = 100
-    width:               int   = 1024
-    height:              int   = 1024
-    resume_step:         int   = -1
+    alpha:               float = Field(default=0.5,   ge=0.0,   le=1.0)
+    scale:               float = Field(default=1.0,   ge=-10.0, le=10.0)
+    steps:               int   = Field(default=40,    ge=1,     le=150)
+    guide_scale:         float = Field(default=7.0,   ge=0.0,   le=30.0)
+    single_stroke:       int   = Field(default=20,    ge=1,     le=100)
+    overcoat:            int   = Field(default=100,   ge=0,     le=100)
+    width:               int   = Field(default=1024,  ge=256,   le=2048)
+    height:              int   = Field(default=1024,  ge=256,   le=2048)
+    resume_step:         int   = Field(default=-1,    ge=-1,    le=150)
     strokes:             list  = []
     prompts:             list  = []
     directional_prompts: list  = []
@@ -210,6 +215,27 @@ def _generation_loop(req: GenerateRequest, queue: asyncio.Queue, loop: asyncio.A
     state    = _get_session(req.session_id)
 
     try:
+        # Validate mode
+        if mode not in _VALID_MODES:
+            asyncio.run_coroutine_threadsafe(
+                queue.put(_event({"type": "error", "message": f"Unknown mode: {mode}"})), loop
+            )
+            return
+
+        # Validate image_b64 size before decoding to prevent memory exhaustion
+        if req.image_b64 and len(req.image_b64) > _MAX_IMAGE_B64_LEN:
+            asyncio.run_coroutine_threadsafe(
+                queue.put(_event({"type": "error", "message": "Image payload too large."})), loop
+            )
+            return
+
+        # Validate resume_step is within the range of saved latents
+        if req.resume_step > req.steps:
+            asyncio.run_coroutine_threadsafe(
+                queue.put(_event({"type": "error", "message": "resume_step exceeds steps."})), loop
+            )
+            return
+
         # Encode negative prompt
         neg_emb, neg_pooled = encode_prompt(req.negative_prompt, pipe)
 
@@ -269,12 +295,6 @@ def _generation_loop(req: GenerateRequest, queue: asyncio.Queue, loop: asyncio.A
                 stencil_image_latent = (pipe.vae.encode(img_tensor).latent_dist.sample() * pipe.vae.config.scaling_factor).to(torch.float16)
             stencil_noise = torch.randn_like(stencil_image_latent)  # fixed noise for consistent unmasked region
             print(f"[stencil] latent shape={tuple(stencil_image_latent.shape)}")
-
-        else:
-            asyncio.run_coroutine_threadsafe(
-                queue.put(_event({"type": "error", "message": f"Unknown mode: {mode}"})), loop
-            )
-            return
 
         # Apply directional prompts on top of whatever embedding was computed above.
         # Skip entries where from/to are empty or scale is zero.
@@ -432,9 +452,9 @@ def _generation_loop(req: GenerateRequest, queue: asyncio.Queue, loop: asyncio.A
         )
 
     except Exception as e:
-        print(f"[generation_loop] error: {e}")
+        print(f"[generation_loop] error for session {req.session_id}: {e}")
         asyncio.run_coroutine_threadsafe(
-            queue.put(_event({"type": "error", "message": str(e)})), loop
+            queue.put(_event({"type": "error", "message": "An error occurred during generation."})), loop
         )
 
     finally:
