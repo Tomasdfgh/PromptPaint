@@ -83,6 +83,11 @@ export default function App() {
   const [paletteWeights, setPaletteWeights] = useState([]);
   const [theme, setTheme] = useState(() => localStorage.getItem('pp-theme') || 'dark');
   const [generatingStencil, setGeneratingStencil] = useState(false);
+  const [modelOnline,    setModelOnline]    = useState(true);
+  const [modelStarted,   setModelStarted]   = useState(false);
+  const [modelDismissed, setModelDismissed] = useState(false);
+  const [startError,     setStartError]     = useState(null);
+  const pollIntervalRef = useRef(null);
 
   // Scrubber state (UI — reset when switching layers)
   const [resumeStep,        setResumeStep]        = useState(null);
@@ -114,6 +119,11 @@ export default function App() {
 
   const showAbout   = location.pathname === '/about';
   const showContact = location.pathname === '/contacts';
+
+  // Re-show the offline modal when user navigates back to main
+  useEffect(() => {
+    if (location.pathname === '/') setModelDismissed(false);
+  }, [location.pathname]);
 
   const switchTheme = (t) => { setTheme(t); localStorage.setItem('pp-theme', t); setMenuOpen(false); };
 
@@ -215,6 +225,54 @@ export default function App() {
       socket.off('error');
       socket.off('status');
     };
+  }, []);
+
+  // ---------------------------------------------------------------------------
+  // Model health polling
+  // ---------------------------------------------------------------------------
+  const checkModelHealth = useCallback(() => {
+    fetch('/api/health')
+      .then(r => r.json())
+      .then(data => {
+        const online = data.model !== 'unreachable';
+        setModelOnline(online);
+        if (online) { setModelStarted(false); }
+      })
+      .catch(() => setModelOnline(false));
+  }, []);
+
+  useEffect(() => {
+    checkModelHealth();
+    pollIntervalRef.current = setInterval(checkModelHealth, 10000);
+    return () => clearInterval(pollIntervalRef.current);
+  }, [checkModelHealth]);
+
+  // Poll faster while waiting for model to start
+  useEffect(() => {
+    if (modelStarted && !modelOnline) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = setInterval(checkModelHealth, 5000);
+    } else {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = setInterval(checkModelHealth, 10000);
+    }
+  }, [modelStarted, modelOnline, checkModelHealth]);
+
+  const handleRequestModelStart = useCallback(() => {
+    setStartError(null);
+    fetch('/api/model/start', { method: 'POST' })
+      .then(r => r.json())
+      .then(data => {
+        if (data.status === 'starting' || data.status === 'already_running') {
+          setModelStarted(true);
+        } else if (data.status === 'rate_limited') {
+          const mins = Math.ceil(data.retry_after / 60);
+          setStartError(`Too many requests. Try again in ${mins} min.`);
+        } else {
+          setStartError(data.message || 'Could not start model.');
+        }
+      })
+      .catch(() => setStartError('Request failed.'));
   }, []);
 
   // ---------------------------------------------------------------------------
@@ -414,6 +472,91 @@ export default function App() {
           <img src={uoftLogoDataUri} alt="University of Toronto" className="uoft-logo" />
         </div>
       </header>
+
+      {!modelOnline && !modelDismissed && (
+        <div className="model-offline-overlay">
+          <div className="model-offline-modal">
+            {/* Logo — same layering as header */}
+            <div className="model-offline-logo-wrap">
+              <div className="logo-container">
+                <h2 className="logo model-offline-logo-text">PromptPaint</h2>
+                <svg className="logo-brush-deco" viewBox="0 0 360 66" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                  <defs>
+                    <linearGradient id="mo-grad" x1="0" y1="0" x2="1" y2="0">
+                      <stop offset="0%"   stopColor="#e91e8c"/>
+                      <stop offset="20%"  stopColor="#ff5722"/>
+                      <stop offset="42%"  stopColor="#ffc107"/>
+                      <stop offset="62%"  stopColor="#4caf50"/>
+                      <stop offset="82%"  stopColor="#00bcd4"/>
+                      <stop offset="100%" stopColor="#2196f3"/>
+                    </linearGradient>
+                  </defs>
+                  <path d="M 4,44 Q 90,30 180,36 Q 270,42 318,28" stroke="rgba(0,0,0,0.3)" strokeWidth="38" strokeLinecap="round" fill="none"/>
+                  <path d="M 4,42 Q 90,28 180,34 Q 270,40 318,26" stroke="url(#mo-grad)" strokeWidth="34" strokeLinecap="round" fill="none" opacity="0.75"/>
+                  <path d="M 8,32 Q 90,19 180,25 Q 270,31 314,17" stroke="rgba(255,255,255,0.2)" strokeWidth="9" strokeLinecap="round" fill="none"/>
+                  <g transform="translate(318,26) rotate(38)">
+                    <rect x="-5" y="-44" width="10" height="34" rx="3" fill="#7a4520"/>
+                    <rect x="-1.5" y="-42" width="2" height="30" rx="1" fill="rgba(255,255,255,0.15)"/>
+                    <ellipse cx="0" cy="-44" rx="5" ry="4" fill="#1e0a02"/>
+                    <rect x="-6" y="-12" width="12" height="11" rx="1" fill="#aaaaaa"/>
+                    <line x1="-6" y1="-8" x2="6" y2="-8" stroke="rgba(255,255,255,0.4)" strokeWidth="0.8"/>
+                    <path d="M -6,0 C -7,8 -16,18 -17,30 L 17,30 C 16,18 7,8 6,0 Z" fill="#c4924a"/>
+                    <line x1="-5" y1="0" x2="-15" y2="30" stroke="#8b6020" strokeWidth="0.8" opacity="0.5"/>
+                    <line x1="-2" y1="0" x2="-8"  y2="30" stroke="#8b6020" strokeWidth="0.8" opacity="0.5"/>
+                    <line x1="0"  y1="0" x2="0"   y2="30" stroke="#8b6020" strokeWidth="0.8" opacity="0.5"/>
+                    <line x1="2"  y1="0" x2="8"   y2="30" stroke="#8b6020" strokeWidth="0.8" opacity="0.5"/>
+                    <line x1="5"  y1="0" x2="15"  y2="30" stroke="#8b6020" strokeWidth="0.8" opacity="0.5"/>
+                    <path d="M -17,25 Q 0,29 17,25 L 17,30 Q 0,34 -17,30 Z" fill="#2196f3" opacity="0.9"/>
+                    <path d="M -17,25 Q -12,27 -8,26 L -8,30 Q -12,31 -17,30 Z" fill="#4caf50" opacity="0.85"/>
+                    <path d="M 8,26 Q 12,27 17,25 L 17,30 Q 12,31 8,30 Z" fill="#ffc107" opacity="0.85"/>
+                  </g>
+                </svg>
+              </div>
+              <p className="logo-subtitle">Prompt Like a Painter</p>
+            </div>
+
+            <div className="model-offline-divider" />
+
+            {/* Centered title, no dot */}
+            <h3 className="model-offline-title">
+              {modelStarted ? 'Starting Up' : 'Model Offline'}
+            </h3>
+
+            {!modelStarted ? (
+              <>
+                <p className="model-offline-body">
+                  PromptPaint runs on a personal server with a dedicated GPU, not a cloud provider.
+                  Occasionally the GPU is needed for other projects, so the model gets taken offline temporarily.
+                </p>
+                <p className="model-offline-body">
+                  You can request it to start back up and it should be ready within a minute or two.
+                  If it doesn't respond, feel free to reach out and I'll get it going.
+                </p>
+                {startError && <p className="model-offline-error">{startError}</p>}
+                <div className="model-offline-actions">
+                  <button className="model-offline-btn-primary" onClick={handleRequestModelStart}>
+                    Request Start
+                  </button>
+                  <button className="model-offline-btn-secondary" onClick={() => { setModelDismissed(true); navigate('/contacts'); }}>
+                    Contact Me
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="model-offline-body">
+                  The model is loading onto the GPU. This usually takes about a minute.
+                  The page will update automatically once it's ready.
+                </p>
+                <div className="model-offline-starting">
+                  <span className="model-offline-spinner" />
+                  <span>Loading model…</span>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       <main className="app-body">
         {showAbout   && <About   onClose={() => navigate('/')} />}

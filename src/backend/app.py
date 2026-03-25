@@ -1,8 +1,10 @@
 import csv
 import json
 import os
+import time
 from datetime import datetime, timezone
 
+import docker
 import requests
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request
@@ -25,12 +27,18 @@ socketio = SocketIO(
     max_http_buffer_size=20_000_000,  # 20MB — needed for stencil image payloads
 )
 
-MODEL_URL  = os.getenv('MODEL_SERVICE_URL', 'http://model:8000')
-LOGS_DIR   = os.getenv('LOGS_DIR', '/app/logs')
-CONTACT_LOG = os.path.join(LOGS_DIR, 'contact_messages.csv')
-PROMPT_LOG  = os.path.join(LOGS_DIR, 'prompt_request_logs.csv')
-TRAFFIC_LOG = os.path.join(LOGS_DIR, 'traffic_log.csv')
-UPLOAD_LOG  = os.path.join(LOGS_DIR, 'image_upload_log.csv')
+MODEL_URL            = os.getenv('MODEL_SERVICE_URL', 'http://model:8000')
+MODEL_CONTAINER_NAME = os.getenv('MODEL_CONTAINER_NAME', 'promptpaint-model')
+LOGS_DIR             = os.getenv('LOGS_DIR', '/app/logs')
+
+# In-memory rate limit store: ip -> last request timestamp
+_model_start_times: dict[str, float] = {}
+MODEL_START_COOLDOWN = 300  # seconds
+CONTACT_LOG    = os.path.join(LOGS_DIR, 'contact_messages.csv')
+PROMPT_LOG     = os.path.join(LOGS_DIR, 'prompt_request_logs.csv')
+TRAFFIC_LOG    = os.path.join(LOGS_DIR, 'traffic_log.csv')
+UPLOAD_LOG     = os.path.join(LOGS_DIR, 'image_upload_log.csv')
+MODEL_START_LOG = os.path.join(LOGS_DIR, 'model_start_requests.csv')
 
 os.makedirs(LOGS_DIR, exist_ok=True)
 
@@ -111,6 +119,36 @@ def health():
     except Exception:
         model_status = 'unreachable'
     return jsonify({'status': 'ok', 'model': model_status})
+
+
+@app.route('/api/model/start', methods=['POST'])
+def model_start():
+    ip        = get_client_ip()
+    now       = time.time()
+    timestamp = datetime.now(timezone.utc).isoformat()
+    last = _model_start_times.get(ip, 0)
+    if now - last < MODEL_START_COOLDOWN:
+        remaining = int(MODEL_START_COOLDOWN - (now - last))
+        write_csv_row(MODEL_START_LOG, ['timestamp', 'ip', 'status'], [timestamp, ip, 'rate_limited'])
+        return jsonify({'status': 'rate_limited', 'retry_after': remaining}), 429
+
+    try:
+        client    = docker.from_env()
+        container = client.containers.get(MODEL_CONTAINER_NAME)
+        if container.status == 'running':
+            write_csv_row(MODEL_START_LOG, ['timestamp', 'ip', 'status'], [timestamp, ip, 'already_running'])
+            return jsonify({'status': 'already_running'}), 200
+        container.start()
+        _model_start_times[ip] = now
+        write_csv_row(MODEL_START_LOG, ['timestamp', 'ip', 'status'], [timestamp, ip, 'starting'])
+        print(f'✓ Model container start requested | IP: {ip}')
+        return jsonify({'status': 'starting'}), 200
+    except docker.errors.NotFound:
+        write_csv_row(MODEL_START_LOG, ['timestamp', 'ip', 'status'], [timestamp, ip, 'error_not_found'])
+        return jsonify({'status': 'error', 'message': f'Container "{MODEL_CONTAINER_NAME}" not found'}), 404
+    except Exception as e:
+        write_csv_row(MODEL_START_LOG, ['timestamp', 'ip', 'status'], [timestamp, ip, f'error: {e}'])
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
 # ---------------------------------------------------------------------------

@@ -13,6 +13,7 @@ services:
     environment:
       - HF_HOME=/model-cache
       - HF_TOKEN=${HF_TOKEN:-}
+    restart: "no"
     deploy:
       resources:
         reservations:
@@ -31,10 +32,12 @@ services:
     volumes:
       - ./src/backend:/app/src/backend
       - ${BASE_REPO_DIR:-/home/thomas-nguyen/Projects/PromptPaint}/logs:/app/logs
+      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - FLASK_ENV=development
       - FLASK_DEBUG=True
       - MODEL_SERVICE_URL=http://model:8000
+      - MODEL_CONTAINER_NAME=promptpaint-model-dev
       - LOGS_DIR=/app/logs
 
   frontend:
