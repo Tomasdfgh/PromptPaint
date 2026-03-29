@@ -1,0 +1,103 @@
+\relax 
+\providecommand\hyper@newdestlabel[2]{}
+\providecommand\HyField@AuxAddToFields[1]{}
+\providecommand\HyField@AuxAddToCoFields[2]{}
+\citation{chung2023promptpaint}
+\citation{ramesh2022hierarchical,rombach2022high}
+\citation{chung2023promptpaint}
+\citation{podell2023sdxl}
+\citation{rombach2022high}
+\citation{radford2021learning}
+\citation{podell2023sdxl}
+\citation{liu2022promptengineering}
+\citation{gandissect}
+\citation{gal2022image}
+\citation{brooks2023instructpix2pix}
+\citation{liu2022compositional}
+\citation{chung2023promptpaint}
+\citation{avrahami2022blended}
+\citation{meng2021sdedit}
+\@writefile{toc}{\contentsline {section}{Abstract}{1}{section*.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {1}Introduction}{1}{section.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {2}Background and Related Work}{1}{section.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.1}Diffusion-based Text-to-Image Generation}{1}{subsection.2.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}Prompt Engineering}{1}{subsection.2.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.3}Steering Generative Models}{1}{subsection.2.3}\protected@file@percent }
+\citation{hertz2022prompt}
+\citation{zhang2023adding}
+\citation{chung2022talebrush}
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces The PromptPaint interface. (a)\nonbreakingspace Prompt List: active prompts whose embeddings are blended on the palette. (b)\nonbreakingspace Prompt Palette: a draggable cursor sets per-prompt weights; cursor position maps to a mixed embedding via Fréchet mean interpolation. (c)\nonbreakingspace Directional Prompts: ``from'' and ``to'' concept endpoints with a scalar weight that shifts the mixed embedding along a semantic direction. (d)\nonbreakingspace Prompt Composition: real-time readout of per-prompt weight contributions. (e)\nonbreakingspace Generation Settings: controls for diffusion steps, guidance scale, single-stroke brush size, stencil mode, brush radius, and overcoat ratio; revealed by hovering over the Paint button. (f)\nonbreakingspace Toolbar: mode selector for generate, erase, lasso, export, and image upload. (g)\nonbreakingspace Canvas: the main drawing surface; brush strokes define the stencil region for spatially targeted generation. (h)\nonbreakingspace Layers: layer stack with per-layer opacity and visibility controls.}}{2}{figure.caption.5}\protected@file@percent }
+\providecommand*\caption@xref[2]{\@setref\relax\@undefined{#1}}
+\newlabel{fig:ui}{{1}{2}{The PromptPaint interface. (a)~Prompt List: active prompts whose embeddings are blended on the palette. (b)~Prompt Palette: a draggable cursor sets per-prompt weights; cursor position maps to a mixed embedding via Fréchet mean interpolation. (c)~Directional Prompts: ``from'' and ``to'' concept endpoints with a scalar weight that shifts the mixed embedding along a semantic direction. (d)~Prompt Composition: real-time readout of per-prompt weight contributions. (e)~Generation Settings: controls for diffusion steps, guidance scale, single-stroke brush size, stencil mode, brush radius, and overcoat ratio; revealed by hovering over the Paint button. (f)~Toolbar: mode selector for generate, erase, lasso, export, and image upload. (g)~Canvas: the main drawing surface; brush strokes define the stencil region for spatially targeted generation. (h)~Layers: layer stack with per-layer opacity and visibility controls}{figure.caption.5}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.4}Image Editing and Inpainting}{2}{subsection.2.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.5}Interactive Control During Generation}{2}{subsection.2.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.6}Human-AI Creative Co-creation}{2}{subsection.2.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3}System Design}{2}{section.3}\protected@file@percent }
+\citation{chung2023promptpaint}
+\citation{frechet1948elements}
+\citation{chung2023promptpaint}
+\citation{chung2023promptpaint}
+\citation{chung2023promptpaint}
+\citation{chung2023promptpaint}
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Prompt mixing between ``a dog'' and ``a cat'' at five evenly spaced weights. Top: original paper using linear embedding interpolation on SD\,v1.5. Bottom: our Fréchet mean interpolation on SDXL, which keeps the mixed embedding on the CLIP hypersphere for more coherent blends.}}{3}{figure.caption.6}\protected@file@percent }
+\newlabel{fig:prompt_mixing}{{2}{3}{Prompt mixing between ``a dog'' and ``a cat'' at five evenly spaced weights. Top: original paper using linear embedding interpolation on SD\,v1.5. Bottom: our Fréchet mean interpolation on SDXL, which keeps the mixed embedding on the CLIP hypersphere for more coherent blends}{figure.caption.6}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}Prompt Mixing via Fréchet Mean}{3}{subsection.3.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}Prompt Stencil}{3}{subsection.3.2}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces The prompt palette with five simultaneous prompts. Each numbered node represents a distinct text prompt; the crosshair position determines the per-prompt weights via Fréchet mean interpolation. The original paper supported at most three prompts.}}{3}{figure.caption.7}\protected@file@percent }
+\newlabel{fig:five_prompts}{{3}{3}{The prompt palette with five simultaneous prompts. Each numbered node represents a distinct text prompt; the crosshair position determines the per-prompt weights via Fréchet mean interpolation. The original paper supported at most three prompts}{figure.caption.7}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.3}Directional Prompts}{3}{subsection.3.3}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Directional prompt: shifting from ``young'' to ``old'' at five evenly spaced weight values, holding the base prompt constant.}}{3}{figure.caption.8}\protected@file@percent }
+\newlabel{fig:directional}{{4}{3}{Directional prompt: shifting from ``young'' to ``old'' at five evenly spaced weight values, holding the base prompt constant}{figure.caption.8}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.4}Prompt Intervention}{3}{subsection.3.4}\protected@file@percent }
+\citation{rombach2022high}
+\citation{podell2023sdxl}
+\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces Directional prompt applied to ``interior home design,'' shifting from ``simple'' to ``complex'' at five evenly spaced weight values. The scene progressively gains architectural detail, layered furnishings, and visual density while the base prompt remains unchanged.}}{4}{figure.caption.9}\protected@file@percent }
+\newlabel{fig:directional_interior}{{5}{4}{Directional prompt applied to ``interior home design,'' shifting from ``simple'' to ``complex'' at five evenly spaced weight values. The scene progressively gains architectural detail, layered furnishings, and visual density while the base prompt remains unchanged}{figure.caption.9}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {6}{\ignorespaces Prompt intervention during generation. Top: original paper's live dragging interaction, branching from ``action painting'' mid-generation. Bottom: our post-hoc scrubbing approach, where the user selects a branch point after viewing decoded step previews, then resumes with a new prompt (here, ``a dragon'') from the saved latent.}}{4}{figure.caption.10}\protected@file@percent }
+\newlabel{fig:scrubbing_result}{{6}{4}{Prompt intervention during generation. Top: original paper's live dragging interaction, branching from ``action painting'' mid-generation. Bottom: our post-hoc scrubbing approach, where the user selects a branch point after viewing decoded step previews, then resumes with a new prompt (here, ``a dragon'') from the saved latent}{figure.caption.10}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.5}Post-hoc Generation Scrubbing}{4}{subsection.3.5}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {7}{\ignorespaces Prompt intervention switching from ``a rabbit'' to ``a ceramic vase.'' Top: original paper's live dragging approach. Bottom: our post-hoc scrubbing, where the user branches from a saved intermediate latent. Earlier steps preserve the subject's form; later steps resolve the new material and shape.}}{4}{figure.caption.11}\protected@file@percent }
+\newlabel{fig:intervention}{{7}{4}{Prompt intervention switching from ``a rabbit'' to ``a ceramic vase.'' Top: original paper's live dragging approach. Bottom: our post-hoc scrubbing, where the user branches from a saved intermediate latent. Earlier steps preserve the subject's form; later steps resolve the new material and shape}{figure.caption.11}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.6}Model Selection}{4}{subsection.3.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {4}Implementation}{4}{section.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Technology Stack}{4}{subsection.4.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}Multi-user Architecture}{4}{subsection.4.2}\protected@file@percent }
+\citation{chung2023promptpaint}
+\citation{ho2020denoising}
+\citation{zhang2023adding}
+\citation{chung2023promptpaint}
+\@writefile{lof}{\contentsline {figure}{\numberline {8}{\ignorespaces Post-hoc scrubbing workflow.}}{5}{figure.caption.12}\protected@file@percent }
+\newlabel{fig:scrubber}{{8}{5}{Post-hoc scrubbing workflow}{figure.caption.12}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.3}Streaming Previews}{5}{subsection.4.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {5}Discussion}{5}{section.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.1}Design Trade-offs}{5}{subsection.5.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.2}Limitations}{5}{subsection.5.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.3}Future Work}{5}{subsection.5.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {6}Conclusion}{5}{section.6}\protected@file@percent }
+\bibstyle{ACM-Reference-Format}
+\bibdata{references}
+\bibcite{avrahami2022blended}{{1}{2022}{{Avrahami et~al\mbox  {.}}}{{}}}
+\bibcite{brooks2023instructpix2pix}{{2}{2023}{{Brooks et~al\mbox  {.}}}{{}}}
+\bibcite{chung2023promptpaint}{{3}{2023}{{Chung and Adar}}{{}}}
+\bibcite{chung2022talebrush}{{4}{2022}{{Chung et~al\mbox  {.}}}{{}}}
+\bibcite{gandissect}{{5}{2022}{{Dang et~al\mbox  {.}}}{{}}}
+\bibcite{frechet1948elements}{{6}{1948}{{Fr{\'e}chet}}{{}}}
+\bibcite{gal2022image}{{7}{2022}{{Gal et~al\mbox  {.}}}{{}}}
+\bibcite{hertz2022prompt}{{8}{2022}{{Hertz et~al\mbox  {.}}}{{}}}
+\bibcite{ho2020denoising}{{9}{2020}{{Ho et~al\mbox  {.}}}{{}}}
+\bibcite{liu2022compositional}{{10}{2022}{{Liu et~al\mbox  {.}}}{{}}}
+\bibcite{liu2022promptengineering}{{11}{2022}{{Liu and Chilton}}{{}}}
+\bibcite{meng2021sdedit}{{12}{2022}{{Meng et~al\mbox  {.}}}{{}}}
+\bibcite{podell2023sdxl}{{13}{2023}{{Podell et~al\mbox  {.}}}{{}}}
+\bibcite{radford2021learning}{{14}{2021}{{Radford et~al\mbox  {.}}}{{}}}
+\bibcite{ramesh2022hierarchical}{{15}{2022}{{Ramesh et~al\mbox  {.}}}{{}}}
+\bibcite{rombach2022high}{{16}{2022}{{Rombach et~al\mbox  {.}}}{{}}}
+\bibcite{zhang2023adding}{{17}{2023}{{Zhang et~al\mbox  {.}}}{{}}}
+\newlabel{tocindent-1}{0pt}
+\newlabel{tocindent0}{0pt}
+\newlabel{tocindent1}{4.185pt}
+\newlabel{tocindent2}{10.34999pt}
+\newlabel{tocindent3}{0pt}
+\@writefile{toc}{\contentsline {section}{References}{6}{section*.14}\protected@file@percent }
+\newlabel{TotPages}{{6}{6}{}{page.6}{}}
+\gdef \@abspage@last{6}
