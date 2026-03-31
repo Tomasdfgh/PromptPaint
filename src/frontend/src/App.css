@@ -1813,6 +1813,19 @@ body {
   margin: 0 0 0.85rem 0;
 }
 
+.about-video-wrapper {
+  margin: 0.5rem 0 0.85rem 0;
+}
+
+.about-video-caption {
+  text-align: center;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  opacity: 0.75;
+  margin: 0.5rem 0 0 0 !important;
+  font-style: italic;
+}
+
 .about-citation {
   font-size: 0.83rem;
   color: var(--text-muted);

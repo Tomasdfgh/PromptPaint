@@ -36,6 +36,21 @@ export default function About({ onClose }) {
             </p>
 
             <section className="about-article-section">
+              <h3>Demo</h3>
+              <div className="about-video-wrapper">
+                <iframe
+                  width="100%"
+                  style={{ aspectRatio: '16/9', border: 'none', borderRadius: 8 }}
+                  src="https://www.youtube.com/embed/Ws-_sAdnccU"
+                  title="PromptPaint Demo"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                />
+                <p className="about-video-caption">Demo video for PromptPaint</p>
+              </div>
+            </section>
+
+            <section className="about-article-section">
               <h3>Original Publication</h3>
               <p>
                 This application is an implementation of the research paper by{' '}
