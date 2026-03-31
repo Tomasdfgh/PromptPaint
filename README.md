@@ -9,7 +9,9 @@ PromptPaint is an interactive text-to-image generation tool that lets you steer 
 This is an implementation and extension of the research paper by John Joon Young Chung and Eytan Adar, published at UIST 2023.
 
 **URL:** https://promptpaint.tom-nguyen.ca
+
 **Demo video:** https://www.youtube.com/watch?v=Ws-_sAdnccU
+
 **Paper:** https://doi.org/10.1145/3586183.3606777
 
 ---
