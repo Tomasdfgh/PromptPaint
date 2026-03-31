@@ -1,10 +1,14 @@
 # PromptPaint
 
-PromptPaint is an interactive text-to-image generation tool that lets you steer AI art creation through paint-like interactions. Instead of typing a single prompt and hoping for the best, you can blend multiple prompts together, paint specific regions of the canvas with different concepts, and even branch a generation mid-way to redirect where it is going. The goal is to make working with diffusion models feel more like painting — iterative, spatial, and expressive.
+<p align="center">
+  <img width="300" alt="promptpaint_logo" src="https://github.com/user-attachments/assets/c71b43b3-bc70-4ab9-b810-361d4071857b" />
+</p>
+
+PromptPaint is an interactive text-to-image generation tool that lets you steer AI art creation through paint-like interactions. Instead of typing a single prompt and hoping for the best, you can blend multiple prompts together, paint specific regions of the canvas with different concepts, and even branch a generation mid-way to redirect where it is going. The goal is to make working with diffusion models feel more like painting: iterative, spatial, and expressive.
 
 This is an implementation and extension of the research paper by John Joon Young Chung and Eytan Adar, published at UIST 2023.
 
-**Live demo:** https://promptpaint.tom-nguyen.ca
+**URL:** https://promptpaint.tom-nguyen.ca
 **Demo video:** https://www.youtube.com/watch?v=Ws-_sAdnccU
 **Paper:** https://doi.org/10.1145/3586183.3606777
 
@@ -14,7 +18,7 @@ This is an implementation and extension of the research paper by John Joon Young
 
 | Feature | Description |
 |---|---|
-| **Prompt Mixing** | Place multiple prompts on a visual palette and drag a cursor to blend them. The closer the cursor is to a prompt, the more it influences the result. Uses Frechet mean interpolation to keep blends geometrically correct — supports any number of prompts simultaneously. |
+| **Prompt Mixing** | Place multiple prompts on a visual palette and drag a cursor to blend them. The closer the cursor is to a prompt, the more it influences the result. Uses Frechet mean interpolation to keep blends geometrically correct, supports any number of prompts simultaneously. |
 | **Directional Prompts** | Shift a concept along a semantic axis without rewriting the base prompt. For example, set a direction from "young" to "old" and dial in how far along that axis the result should land. |
 | **Prompt Stencil** | Paint a region on the canvas with a brush, then generate into just that region using whatever is currently on the palette. An overcoat slider controls how strongly the new content departs from what was already there. |
 | **Post-hoc Scrubbing** | After a generation completes, scrub back through every saved diffusion step, pick a branch point, update the prompt palette, and resume from there. Equivalent to intervening mid-generation but without any timing pressure. |
